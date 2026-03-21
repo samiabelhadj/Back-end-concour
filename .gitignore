@@ -1,0 +1,44 @@
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for environment variables
+.env
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# OS files (Ubuntu/Linux)
+.DS_Store
+Thumbs.db
+
+# Build output (if you ever compile/minify)
+dist/
+build/
+
+# Optional IDE/editor files
+.vscode/
+.idea/
+
+# extra
+pass.js
+docs/
+
+
+ 
