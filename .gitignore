@@ -1,44 +1,51 @@
-# dependencies
+# Node modules / dependencies
 node_modules/
+jspm_packages/
 
-# environment variables
+# Environment variables
 .env
 .env.local
 .env.development
 .env.test
 .env.production
 
-# logs
-logs
+# Logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# runtime files
-pids
+# Runtime files
+pids/
 *.pid
 *.seed
 *.pid.lock
 
-# coverage reports
-coverage/
-
-# build output
+# Build output
 dist/
 build/
+
+# Coverage / testing
+coverage/
+.nyc_output
+
+# Temporary files
+tmp/
+temp/
+
+# Optional npm cache / REPL history
+.npm
+.node_repl_history
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# editor files
+# IDE/editor files
 .vscode/
 .idea/
 
-# temporary files
-tmp/
-temp/
-
-# testing
-.nyc_output
+# Extra project files
+pass.js
+docs/
