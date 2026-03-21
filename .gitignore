@@ -1,44 +1,51 @@
-# Node modules
+# Node modules / dependencies
 node_modules/
+jspm_packages/
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
 
 # Logs
 logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Runtime data
+# Runtime files
 pids/
 *.pid
 *.seed
 *.pid.lock
 
-# Directory for environment variables
-.env
-
-# Dependency directories
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# OS files (Ubuntu/Linux)
-.DS_Store
-Thumbs.db
-
-# Build output (if you ever compile/minify)
+# Build output
 dist/
 build/
 
-# Optional IDE/editor files
+# Coverage / testing
+coverage/
+.nyc_output
+
+# Temporary files
+tmp/
+temp/
+
+# Optional npm cache / REPL history
+.npm
+.node_repl_history
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor files
 .vscode/
 .idea/
 
-# extra
+# Extra project files
 pass.js
 docs/
-
-
- 
