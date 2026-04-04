@@ -6,7 +6,7 @@ require("dotenv").config();
 
  
 const app = express();
-app.use(cors());
+app.use(cors()); //!change it later 
 app.use(express.json());
 
 //Routes
@@ -20,7 +20,7 @@ app.use("/api/modules",require("./src/routes/module.route"))
 
 // Error middleware
 
-
+app.use(require("./src/middleware/error.middleware"))
 
 
 // Server 
