@@ -9,11 +9,11 @@ require('dotenv').config()
 // ─────────────────────────────────────────
  exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, password,role } = req.body
 
     
     // 1. validate input
-    if (!email || !password) {
+    if (!email || !password|| !role) {
       console.log('Missing email or password')
       return res.status(400).json({ message: 'Email and password are required' })
     }
@@ -80,7 +80,16 @@ require('dotenv').config()
 
     console.log('roles:', roles)
 
-     // 8. get all modules for this user
+
+     // 8. check the selected role actually belongs to this user
+    if (!roles.includes(role)) {
+      return res.status(403).json({ 
+        message: `You do not have the role: ${role}` 
+      })
+    }
+
+
+     // 9. get all modules for this user
 const [moduleRows] = await db.query(
   `SELECT am.id, am.name
    FROM user_module um
@@ -91,12 +100,13 @@ const [moduleRows] = await db.query(
 const modules = moduleRows.map(m => ({ id: m.id, name: m.name }))
 
     
-    // 9. create JWT token
+    // 10. create JWT token
     const token = jwt.sign(
       {
         userId: user.id,
         email: user.email,
-        roles
+        roles,
+        activeRole: role
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
@@ -105,11 +115,11 @@ const modules = moduleRows.map(m => ({ id: m.id, name: m.name }))
     console.log('JWT token created')
 
     // 10. log successful login
-    await db.query(
+     await db.query(
       `INSERT INTO audit_log
         (user_id, action, target_table, target_id, description, ip_address, logged_at)
        VALUES (?, 'LOGIN_SUCCESS', 'users', ?, ?, ?, NOW())`,
-      [user.id, user.id, `Successful login for ${email}`, req.ip]
+      [user.id, user.id, `Successful login for ${email} as ${role}`, req.ip]
     )
 
     console.log('Login success logged')
@@ -123,8 +133,10 @@ const modules = moduleRows.map(m => ({ id: m.id, name: m.name }))
         last_name: user.last_name,
         email: user.email,
         grade: user.grade,
+        faculty:user.faculty,
         modules,
-        roles
+        roles,
+        activeRole: role 
       }
     })
 
@@ -143,7 +155,7 @@ exports.getMe = async (req, res) => {
     // Get user info
     const [rows] = await db.query(
       `SELECT u.id, u.first_name, u.last_name, u.email,
-              u.grade, u.is_active, u.created_at
+              u.grade,u.faculty, u.is_active, u.created_at
        FROM users u
        WHERE u.id = ?`,
       [req.user.userId]

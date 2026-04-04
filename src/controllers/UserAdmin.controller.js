@@ -21,12 +21,13 @@ exports.createUser = async (req, res) => {
       email,
       grade,          
       module_ids,      // array of modules ids this user belongs to
-      roles              
+      roles,
+      faculty      
     } = req.body
 
-    if (!first_name || !last_name || !email || !roles || roles.length === 0) {
+    if (!first_name || !last_name || !email || !roles || roles.length === 0||!faculty) {
       return res.status(400).json({
-        message: 'first_name, last_name, email, and roles are required'
+        message: 'please enter all the required informations'
       })
     }
 
@@ -63,10 +64,10 @@ exports.createUser = async (req, res) => {
     // Insert user — is_active = true immediately
     const [result] = await connection.query(
       `INSERT INTO users
-        (first_name, last_name, email, password_hash, grade,
+        (first_name, last_name, email, password_hash, grade,faculty,
          is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, true, NOW(), NOW())`,
-      [first_name, last_name, email, password_hash, grade || null]
+       VALUES (?, ?, ?, ?, ?, ?,true, NOW(), NOW())`,
+      [first_name, last_name, email, password_hash, grade,faculty || null]
     )
     const newUserId = result.insertId
 
@@ -119,6 +120,7 @@ exports.createUser = async (req, res) => {
         last_name,
         email,
         roles,
+        faculty,
         modules: module_ids || [],
         is_active: true
       }
@@ -146,6 +148,7 @@ exports.createUser = async (req, res) => {
         u.last_name,
         u.email,
         u.grade,
+        u.faculty,
         u.is_active,
         u.created_at,
         GROUP_CONCAT(DISTINCT am.name) AS modules,
@@ -185,6 +188,7 @@ exports.getUserById = async (req, res) => {
         u.last_name,
         u.email,
         u.grade,
+        u.faculty,
         u.is_active,
         u.created_at,
         GROUP_CONCAT(DISTINCT am.name) AS modules,
@@ -221,17 +225,20 @@ exports.getUserById = async (req, res) => {
 // ─────────────────────────────────────────
 exports.updateUser = async (req, res) => {
   try {
-    const { first_name, last_name, grade } = req.body
+    const { first_name, last_name, grade ,faculty} = req.body
     const userId = req.params.id
-
+    if(!first_name && !last_name && !grade && !faculty){
+      return res.status(400).json({message:"no data"});
+    }
     await db.query(
       `UPDATE users SET
         first_name = COALESCE(?, first_name),
         last_name  = COALESCE(?, last_name),
         grade      = COALESCE(?, grade),
+        faculty    = COALESCE(?,faculty),
         updated_at = NOW()
        WHERE id = ?`,
-      [first_name, last_name, grade, userId]
+      [first_name, last_name, grade,faculty, userId]
     )
 
     await db.query(
