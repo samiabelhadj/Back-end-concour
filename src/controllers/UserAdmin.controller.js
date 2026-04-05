@@ -40,7 +40,9 @@ exports.createUser = async (req, res) => {
     } 
 
     // Check role conflicts
+   
     const conflict = await checkRoleConflicts(null, roles)
+     console.log("conflict",conflict)
     if (conflict.hasConflict) {
   // log conflict outside the transaction
   await db.query(

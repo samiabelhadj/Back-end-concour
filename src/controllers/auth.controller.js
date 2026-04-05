@@ -9,12 +9,11 @@ require('dotenv').config()
 // ─────────────────────────────────────────
  exports.login = async (req, res) => {
   try {
-    const { email, password,role } = req.body
+    const { email, password } = req.body
 
     
     // 1. validate input
-    if (!email || !password|| !role) {
-      console.log('Missing email or password')
+    if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' })
     }
 
@@ -70,23 +69,14 @@ require('dotenv').config()
       return res.status(401).json({ message: 'Invalid credentials' })
     }
 
-    console.log('Password correct, fetching roles...')
-
+  
     // 7. get this user's roles
     const [roleRows] = await db.query(
       'SELECT role FROM user_role WHERE user_id = ?', [user.id]
     )
     const roles = roleRows.map(r => r.role)
 
-    console.log('roles:', roles)
-
-
-     // 8. check the selected role actually belongs to this user
-    if (!roles.includes(role)) {
-      return res.status(403).json({ 
-        message: `You do not have the role: ${role}` 
-      })
-    }
+ 
 
 
      // 9. get all modules for this user
@@ -106,7 +96,6 @@ const modules = moduleRows.map(m => ({ id: m.id, name: m.name }))
         userId: user.id,
         email: user.email,
         roles,
-        activeRole: role
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN }
@@ -119,7 +108,7 @@ const modules = moduleRows.map(m => ({ id: m.id, name: m.name }))
       `INSERT INTO audit_log
         (user_id, action, target_table, target_id, description, ip_address, logged_at)
        VALUES (?, 'LOGIN_SUCCESS', 'users', ?, ?, ?, NOW())`,
-      [user.id, user.id, `Successful login for ${email} as ${role}`, req.ip]
+      [user.id, user.id, `Successful login for ${email}`, req.ip]
     )
 
     console.log('Login success logged')
@@ -135,8 +124,7 @@ const modules = moduleRows.map(m => ({ id: m.id, name: m.name }))
         grade: user.grade,
         faculty:user.faculty,
         modules,
-        roles,
-        activeRole: role 
+        roles, 
       }
     })
 
