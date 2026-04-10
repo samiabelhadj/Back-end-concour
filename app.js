@@ -24,7 +24,7 @@ app.use(require("./src/middleware/error.middleware"))
 
 
 // Server 
-PORT = process.env.PORT || "5443";
+PORT = process.env.PORT || "3000";
 app.listen(PORT,()=>{
     console.log(`server is running on port: ${PORT}`);
 })
