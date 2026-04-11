@@ -21,6 +21,8 @@ router.get('/modules',moduleController.getAllModules);
 router.get('/modules/:id',moduleController.getModuleById);
 router.patch('/modules/:id',moduleController.updateModule);
    // # add delete later 
+   // Hard delete (permanent removal)
+router.delete('/users/:id/permanent', UserAdminController.hardDeleteUser);
 
    
 

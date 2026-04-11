@@ -284,5 +284,82 @@ exports.deactivateUser = async (req, res) => {
     res.status(500).json({ message: 'Server error' })
   }
 }
- 
 
+
+// ─────────────────────────────────────────
+// DELETE /api/admin/users/:id/permanent
+// Hard delete but u cant delete admin users
+// ─────────────────────────────────────────
+exports.hardDeleteUser = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const userId = req.params.id;
+    const currentAdminId = req.user.userId; // from JWT middleware
+
+    // 1. Check if target user exists and get their roles
+    const [users] = await connection.query(
+      `SELECT u.id, u.email,
+        GROUP_CONCAT(ur.role) as roles
+       FROM users u
+       LEFT JOIN user_role ur ON u.id = ur.user_id
+       WHERE u.id = ?
+       GROUP BY u.id`,
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const targetUser = users[0];
+    const targetRoles = targetUser.roles ? targetUser.roles.split(',') : [];
+
+    // 2. Prevent deletion of any user with role 'admin'
+    if (targetRoles.includes('admin')) {
+      return res.status(403).json({
+        message: 'Cannot delete an admin user.'
+      });
+    }
+
+    // 3. Prevent self-deletion
+    if (parseInt(userId) === parseInt(currentAdminId)) {
+      return res.status(403).json({
+        message: 'You cannot delete your own account.'
+      });
+    }
+
+    // 4. hard delete 
+    await connection.beginTransaction();
+
+    // Clear assigned_by references
+    await connection.query(
+      'UPDATE user_role SET assigned_by = NULL WHERE assigned_by = ?',
+      [userId]
+    );
+
+    // Delete child rows
+    await connection.query('DELETE FROM user_role WHERE user_id = ?', [userId]);
+    await connection.query('DELETE FROM user_module WHERE user_id = ?', [userId]);
+
+    // Delete user
+    await connection.query('DELETE FROM users WHERE id = ?', [userId]);
+
+    // Log the action
+    await connection.query(
+      `INSERT INTO audit_log
+        (user_id, action, target_table, target_id, description, ip_address, logged_at)
+       VALUES (?, 'USER_HARD_DELETED', 'users', ?, ?, ?, NOW())`,
+      [currentAdminId, userId, `Permanently deleted user ${userId} (${targetUser.email})`, req.ip]
+    );
+
+    await connection.commit();
+    res.json({ message: `User ${userId} permanently deleted` });
+
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error(error);
+    res.status(500).json({ message: 'Server error during hard delete' });
+  } finally {
+    if (connection) connection.release();
+  }
+};
