@@ -41,25 +41,26 @@ exports.createUser = async (req, res) => {
 
     // Check role conflicts
    
-    const conflict = await checkRoleConflicts(null, roles)
-     console.log("conflict",conflict)
-    if (conflict.hasConflict) {
-  // log conflict outside the transaction
-  await db.query(
-    `INSERT INTO role_conflict_log
-      (attempted_email, attempted_role, conflict_reason, attempted_by, attempted_at)
-     VALUES (?, ?, ?, ?, NOW())`,
-    [email, roles.join(','), conflict.reason, req.user.userId]
-  );
+  //   const conflict = await checkRoleConflicts(null, roles)
+  //    console.log("conflict",conflict)
+  //   if (conflict.hasConflict) {
+  // // log conflict outside the transaction
+  // await db.query(
+  //   `INSERT INTO role_conflict_log
+  //     (attempted_email, attempted_role, conflict_reason, attempted_by, attempted_at)
+  //    VALUES (?, ?, ?, ?, NOW())`,
+  //   [email, roles.join(','), conflict.reason, req.user.userId]
+  // );
 
-  await connection.rollback(); // rollback user creation
-  return res.status(409).json({
-    message: 'Role conflict detected',
-    reason: conflict.reason
-  });
-}
+//   await connection.rollback(); // rollback user creation
+//   return res.status(409).json({
+//     message: 'Role conflict detected',
+//     reason: conflict.reason
+//   });
+// }
 
     // Generate password and hash it
+    
     const plainPassword = generatePassword()
     const password_hash = await bcrypt.hash(plainPassword, 12)
 

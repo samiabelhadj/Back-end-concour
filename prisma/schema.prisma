@@ -19,7 +19,7 @@ model academic_module {
   created_at          DateTime              @default(dbgenerated("(now())")) @db.DateTime(0)
   // exercise            exercise[]
   // professor_selection professor_selection[]
-  role_conflict_log   role_conflict_log[]
+  // role_conflict_log   role_conflict_log[]
   user_module         user_module[]
 }
 // leave this one
@@ -34,23 +34,23 @@ model audit_log {
   logged_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
 }
 /// leave this one 
-model role_conflict_log {
-  id              Int              @id @default(autoincrement())
-  attempted_email String           @db.VarChar(150)
-  attempted_role  String           @db.VarChar(255)
-  conflict_reason String           @db.VarChar(255)
-  competition_id  Int?
-  module_id       Int?
-  attempted_by    Int
-  attempted_at    DateTime         @default(dbgenerated("(now())")) @db.DateTime(0)
-  competition     competition?     @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_1")
-  academic_module academic_module? @relation(fields: [module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_2")
-  users           users            @relation(fields: [attempted_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_3")
+// model role_conflict_log {
+//   id              Int              @id @default(autoincrement())
+//   attempted_email String           @db.VarChar(150)
+//   attempted_role  String           @db.VarChar(255)
+//   conflict_reason String           @db.VarChar(255)
+//   competition_id  Int?
+//   module_id       Int?
+//   attempted_by    Int
+//   attempted_at    DateTime         @default(dbgenerated("(now())")) @db.DateTime(0)
+//   competition     competition?     @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_1")
+//   academic_module academic_module? @relation(fields: [module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_2")
+//   users           users            @relation(fields: [attempted_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_3")
 
-  @@index([attempted_by], map: "attempted_by")
-  @@index([competition_id], map: "competition_id")
-  @@index([module_id], map: "module_id")
-}
+//   @@index([attempted_by], map: "attempted_by")
+//   @@index([competition_id], map: "competition_id")
+//   @@index([module_id], map: "module_id")
+// }
 
 //leave this one 
 model user_module {
@@ -93,7 +93,7 @@ model users {
   faculty                                                       String?                   @db.VarChar(150)
   // anonymisation_key                                             anonymisation_key[]
   // attendance                                                    attendance[]
-   competition                                                   competition[]
+   //competition                                                   competition[]
   // competition_phase                                             competition_phase[]
   // corrector_assignment_corrector_assignment_corrector_idTousers corrector_assignment[]    @relation("corrector_assignment_corrector_idTousers")
  // corrector_assignment_corrector_assignment_assigned_byTousers  corrector_assignment[]    @relation("corrector_assignment_assigned_byTousers")
@@ -108,7 +108,7 @@ model users {
   // pv                                                            pv[]
   // pv_signature                                                  pv_signature[]
   // result_publication                                            result_publication[]
-  role_conflict_log                                             role_conflict_log[]
+  // role_conflict_log                                             role_conflict_log[]
   // room_supervisor                                               room_supervisor[]
   // subject_generation_rule                                       subject_generation_rule[]
   user_module                                                   user_module[]
@@ -134,33 +134,33 @@ enum users_grade {
 
 
 
-model competition {
-  id                      Int                      @id @default(autoincrement())
-  name                    String                   @db.VarChar(150)
-  academic_year           String                   @db.VarChar(9)
-  description             String?                  @db.Text
-  max_admitted            Int                      @default(10)
-  waiting_list_size       Int                      @default(5)
-  discrepancy_threshold   Decimal                  @default(3.00) @db.Decimal(5, 2)
-  created_by              Int
-  created_at              DateTime                 @default(dbgenerated("(now())")) @db.DateTime(0)
-  // anonymised_copy         anonymised_copy[]
-  // candidate               candidate[]
-  users                   users                    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_ibfk_1")
-  // competition_phase       competition_phase[]
-  // deliberation            deliberation?
-  // exam_room               exam_room[]
-  // exam_subject            exam_subject?
-  // exercise                exercise[]
-  // professor_selection     professor_selection[]
-  // pv                      pv[]
-  // ranking                 ranking[]
-  // result_publication      result_publication?
-   role_conflict_log       role_conflict_log[]
-  // subject_generation_rule subject_generation_rule?
+// model competition {
+//   id                      Int                      @id @default(autoincrement())
+//   name                    String                   @db.VarChar(150)
+//   academic_year           String                   @db.VarChar(9)
+//   description             String?                  @db.Text
+//   max_admitted            Int                      @default(10)
+//   waiting_list_size       Int                      @default(5)
+//   discrepancy_threshold   Decimal                  @default(3.00) @db.Decimal(5, 2)
+//   created_by              Int
+//   created_at              DateTime                 @default(dbgenerated("(now())")) @db.DateTime(0)
+//   // anonymised_copy         anonymised_copy[]
+//   // candidate               candidate[]
+//   users                   users                    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_ibfk_1")
+//   // competition_phase       competition_phase[]
+//   // deliberation            deliberation?
+//   // exam_room               exam_room[]
+//   // exam_subject            exam_subject?
+//   // exercise                exercise[]
+//   // professor_selection     professor_selection[]
+//   // pv                      pv[]
+//   // ranking                 ranking[]
+//   // result_publication      result_publication?
+//    role_conflict_log       role_conflict_log[]
+//   // subject_generation_rule subject_generation_rule?
 
-  @@index([created_by], map: "created_by")
-}
+//   @@index([created_by], map: "created_by")
+// }
 
 
 
