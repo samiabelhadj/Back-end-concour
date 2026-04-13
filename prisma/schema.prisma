@@ -123,6 +123,7 @@ enum user_role_role {
   supervisor
   jury
   coordinator
+  anonymat
 }
 
 enum users_grade {
