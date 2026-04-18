@@ -17,6 +17,7 @@ app.get("/",(req,res)=>{
 app.use("/api/admin",require("./src/routes/admin.routes"))
 app.use("/api/auth",require("./src/routes/auth.routes"))
 app.use("/api/modules",require("./src/routes/module.route"))
+app.use("/api/candidates", require("./src/routes/candidate.routes"));
 
 // Error middleware
 

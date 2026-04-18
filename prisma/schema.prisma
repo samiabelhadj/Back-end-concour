@@ -231,30 +231,29 @@ enum users_grade {
 
 
 
-
-// model candidate {
-//   id                  Int                @id @default(autoincrement())
-//   competition_id      Int
-//   registration_number String             @db.VarChar(30)
-//   first_name          String             @db.VarChar(80)
-//   last_name           String             @db.VarChar(80)
-//   email               String?            @db.VarChar(150)
-//   phone               String?            @db.VarChar(20)
-//   room_id             Int?
-//   seat_number         Int?
-//   imported_at         DateTime           @default(dbgenerated("(now())")) @db.DateTime(0)
-//   anonymisation_key   anonymisation_key?
-//   attendance          attendance?
-//   competition         competition        @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "candidate_ibfk_1")
-//   exam_room           exam_room?         @relation(fields: [room_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "candidate_ibfk_2")
-
-//   @@unique([competition_id, registration_number], map: "candidate_index_3")
-//   @@index([room_id], map: "room_id")
-// }
+model candidates {
+  id           Int      @id @default(autoincrement())
+  candidate_id String   @unique @db.VarChar(20)
+  nom          String   @db.VarChar(80)
+  prenom       String   @db.VarChar(80)
+  email        String   @unique @db.VarChar(150)
+  specialite   String?  @db.VarChar(150)
+  diplome      String?  @db.VarChar(100)
+  statut       String   @default("INSCRIT") @db.VarChar(20)
+  created_at   DateTime @default(now())
+}
 
 
 
-
+model import_logs {
+  id          Int      @id @default(autoincrement())
+  filename    String   @db.VarChar(255)
+  total_lines Int
+  imported    Int
+  errors      Int
+  imported_by Int
+  created_at  DateTime @default(now())
+}
 
 // model competition_phase {
 //   id                       Int                       @id @default(autoincrement())
