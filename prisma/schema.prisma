@@ -64,9 +64,11 @@ model users {
   user_module                            user_module[]
   user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
   user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
+
+  created_competitions competition[]
+  room_supervisions    room_supervisor[]
+  marked_attendance    attendance[]
 }
-
-
 
 model import_logs {
   id          Int      @id @default(autoincrement())
@@ -95,24 +97,26 @@ enum users_grade {
   IT_engineer @map("IT engineer")
 }
 
-
-
 model competition {
-  id                      Int                      @id @default(autoincrement())
-  name                    String                   @db.VarChar(150)
-  academic_year           String                   @db.VarChar(9)
-  description             String?                  @db.Text
-  max_admitted            Int                      @default(10)
-  waiting_list_size       Int                      @default(5)
-  discrepancy_threshold   Decimal                  @default(3.00) @db.Decimal(5, 2)
-  created_by              Int
-  created_at              DateTime                 @default(dbgenerated("(now())")) @db.DateTime(0)
+  id                    Int      @id @default(autoincrement())
+  name                  String   @db.VarChar(150)
+  academic_year         String   @db.VarChar(9)
+  description           String?  @db.Text
+  max_admitted          Int      @default(10)
+  waiting_list_size     Int      @default(5)
+  discrepancy_threshold Decimal  @default(3.00) @db.Decimal(5, 2)
+  created_by            Int
+  created_at            DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
+
+  users users @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_ibfk_1")
+
+  candidate     candidates[]
+  exam_sessions exam_session[]
+  exam_room     exam_room[]
   // anonymised_copy         anonymised_copy[]
-  candidate               candidates[]
-  users                   users                    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_ibfk_1")
   // competition_phase       competition_phase[]
   // deliberation            deliberation?
-   exam_room               exam_room[]
+
   // exam_subject            exam_subject?
   // exercise                exercise[]
   // professor_selection     professor_selection[]
@@ -125,60 +129,66 @@ model competition {
   @@index([created_by], map: "created_by")
 }
 
-
-
 model candidates {
-  id                          Int       @id @default(autoincrement())
-  candidate_id                String?   @unique @db.VarChar(20)
+  id           Int     @id @default(autoincrement())
+  candidate_id String? @unique @db.VarChar(20)
 
   // ── Identifiants ────────────────────────────────────────────────────────────
-  annee_bac                   String?
-  matricule_bac               String?
+  annee_bac     String?
+  matricule_bac String?
 
   // ── Informations personnelles ───────────────────────────────────────────────
-  nom                         String    @db.VarChar(80)
-  prenom                      String    @db.VarChar(80)
-  nom_ar                      String?   @db.VarChar(80)
-  prenom_ar                   String?   @db.VarChar(80)
-  date_naissance              DateTime?
-  lieu_naissance              String?   @db.VarChar(100)
-  telephone                   String?   @db.VarChar(20)
-  email                       String    @unique @db.VarChar(150)
-  adresse                     String?   @db.VarChar(255)
+  nom            String    @db.VarChar(80)
+  prenom         String    @db.VarChar(80)
+  nom_ar         String?   @db.VarChar(80)
+  prenom_ar      String?   @db.VarChar(80)
+  date_naissance DateTime?
+  lieu_naissance String?   @db.VarChar(100)
+  telephone      String?   @db.VarChar(20)
+  email          String    @unique @db.VarChar(150)
+  adresse        String?   @db.VarChar(255)
 
   // ── Diplôme et cursus ───────────────────────────────────────────────────────
-  etablissement               String?   @db.VarChar(200)
-  annee_diplome               Int?
-  type_cursus                 String?   @db.VarChar(30)
-  filiere                     String?   @db.VarChar(150)
-  specialite                  String?   @db.VarChar(150)
-  diplome                     String?   @db.VarChar(100)
+  etablissement String? @db.VarChar(200)
+  annee_diplome Int?
+  type_cursus   String? @db.VarChar(30)
+  filiere       String? @db.VarChar(150)
+  specialite    String? @db.VarChar(150)
+  diplome       String? @db.VarChar(100)
 
   // ── Moyennes (BAC+5 uniquement) ─────────────────────────────────────────────
-  categorie_classement_master String?   @db.VarChar(100)
+  categorie_classement_master String? @db.VarChar(100)
   moyenne_avant_derniere_ann  Float?
   moyenne_derniere_annee      Float?
   note_memoire_master         Float?
 
   // ── Spécialité demandée ─────────────────────────────────────────────────────
-  specialite_demandee_fr      String?   @db.VarChar(200)
-  specialite_demandee_ar      String?   @db.VarChar(200)
+  specialite_demandee_fr String? @db.VarChar(200)
+  specialite_demandee_ar String? @db.VarChar(200)
 
   // ── Lien progres.mesrs.dz ───────────────────────────────────────────────────
-  url_progres                 String?   @db.VarChar(255)
+  url_progres String? @db.VarChar(255)
 
   // ── Catégorie de candidature ────────────────────────────────────────────────
-  sheet_origine               String    @default("LMD") @db.VarChar(20)
+  sheet_origine String @default("LMD") @db.VarChar(20)
 
   // ── Statut ──────────────────────────────────────────────────────────────────
-  statut                      String    @default("INSCRIT") @db.VarChar(20)
+  statut String @default("INSCRIT") @db.VarChar(20)
 
   // ── Timestamps ──────────────────────────────────────────────────────────────
-  created_at                  DateTime  @default(now())
-  updated_at                  DateTime? @updatedAt
+  created_at DateTime  @default(now())
+  updated_at DateTime? @updatedAt
+
+  //   anonymisation_key   anonymisation_key?
+  attendance      attendance[]
+  candidate_rooms candidate_room[]
+  competition_id  Int?
+  competition     competition?     @relation(fields: [competitionId], references: [id])
+
+  competitionId Int?
+  examRoom      exam_room? @relation(fields: [exam_roomId], references: [id])
+  exam_roomId   Int?
 }
-
-
 
 model room_supervisor {
   room_id       Int
@@ -190,7 +200,6 @@ model room_supervisor {
   @@index([supervisor_id], map: "supervisor_id")
 }
 
-
 model exam_session {
   id             Int      @id @default(autoincrement())
   competition_id Int
@@ -198,35 +207,32 @@ model exam_session {
   start_time     DateTime
   end_time       DateTime
 
-  competition    competition @relation(fields: [competition_id], references: [id])
-  attendance     attendance[]
+  competition     competition      @relation(fields: [competition_id], references: [id])
+  attendance      attendance[]
+  candidate_rooms candidate_room[]
 
-  @@index([competition_id])
   @@unique([competition_id, name])
+  @@index([competition_id])
 }
 
-
-
 model attendance {
-  id            Int      @id @default(autoincrement())
+  id            Int @id @default(autoincrement())
   candidate_id  Int
   room_id       Int
   supervisor_id Int
   session_id    Int
 
-  is_present    Boolean  @default(false)
-  remarks       String?  @db.Text
-  recorded_at   DateTime @default(now())
+  is_present  Boolean  @default(false)
+  remarks     String?  @db.Text
+  recorded_at DateTime @default(now())
 
-  candidate     candidates @relation(fields: [candidate_id], references: [id])
-  exam_room     exam_room  @relation(fields: [room_id], references: [id])
-  supervisor    users      @relation(fields: [supervisor_id], references: [id])
-  session       exam_session @relation(fields: [session_id], references: [id])
+  candidate  candidates   @relation(fields: [candidate_id], references: [id])
+  exam_room  exam_room    @relation(fields: [room_id], references: [id])
+  supervisor users        @relation(fields: [supervisor_id], references: [id])
+  session    exam_session @relation(fields: [session_id], references: [id])
 
   @@unique([candidate_id, session_id])
 }
-
-
 
 model exam_room {
   id              Int               @id @default(autoincrement())
@@ -234,84 +240,25 @@ model exam_room {
   name            String            @db.VarChar(100)
   capacity        Int
   attendance      attendance[]
-  candidates       candidates[]
+  candidates      candidates[]
   competition     competition       @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exam_room_ibfk_1")
   room_supervisor room_supervisor[]
+  candidate_rooms candidate_room[]
 
   @@index([competition_id], map: "competition_id")
 }
-
-
 
 model candidate_room {
   candidate_id Int
   room_id      Int
   session_id   Int
 
-  candidate    candidates @relation(fields: [candidate_id], references: [id])
-  room         exam_room  @relation(fields: [room_id], references: [id])
-  session      exam_session @relation(fields: [session_id], references: [id])
+  candidate candidates   @relation(fields: [candidate_id], references: [id])
+  room      exam_room    @relation(fields: [room_id], references: [id])
+  session   exam_session @relation(fields: [session_id], references: [id])
 
   @@id([candidate_id, session_id])
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 // model anonymisation_key {
@@ -345,12 +292,6 @@ model candidate_room {
 //   @@index([competition_id], map: "competition_id")
 // }
 
-
-
-
-
-
-
 // model candidate {
 //   id                  Int                @id @default(autoincrement())
 //   competition_id      Int
@@ -370,10 +311,6 @@ model candidate_room {
 //   @@unique([competition_id, registration_number], map: "candidate_index_3")
 //   @@index([room_id], map: "room_id")
 // }
-
-
-
-
 
 // model competition_phase {
 //   id                       Int                       @id @default(autoincrement())
@@ -407,7 +344,6 @@ model candidate_room {
 //   competition_phase competition_phase[]
 // }
 
-
 // model correction {
 //   id                        Int                         @id @default(autoincrement())
 //   corrector_assignment_id   Int                         @unique(map: "corrector_assignment_id")
@@ -430,7 +366,6 @@ model candidate_room {
 //   @@index([exercise_id], map: "exercise_id")
 // }
 
-
 // model corrector_assignment {
 //   id                                             Int             @id @default(autoincrement())
 //   anonymised_copy_id                             Int
@@ -447,7 +382,6 @@ model candidate_room {
 //   @@index([assigned_by], map: "assigned_by")
 //   @@index([corrector_id], map: "corrector_id")
 // }
-
 
 // model deliberation {
 //   id                  Int                   @id @default(autoincrement())
@@ -487,10 +421,6 @@ model candidate_room {
 //   deliberation deliberation[]
 // }
 
-
-
-
-
 // model exam_subject {
 //   id                    Int                     @id @default(autoincrement())
 //   competition_id        Int                     @unique(map: "competition_id")
@@ -505,7 +435,6 @@ model candidate_room {
 //   @@index([generated_by], map: "generated_by")
 // }
 
-
 // model exam_subject_exercise {
 //   exam_subject_id Int
 //   exercise_id     Int
@@ -516,7 +445,6 @@ model candidate_room {
 //   @@id([exam_subject_id, exercise_id])
 //   @@index([exercise_id], map: "exercise_id")
 // }
-
 
 // model exercise {
 //   id                        Int                         @id @default(autoincrement())
@@ -560,7 +488,6 @@ model candidate_room {
 //   exercise exercise[]
 // }
 
-
 // model exercise_version {
 //   id             Int      @id @default(autoincrement())
 //   exercise_id    Int
@@ -592,7 +519,6 @@ model candidate_room {
 
 //   @@index([third_corrector_id], map: "third_corrector_id")
 // }
-
 
 // model professor_selection {
 //   id                                            Int             @id @default(autoincrement())
@@ -681,12 +607,6 @@ model candidate_room {
 //   @@index([published_by], map: "published_by")
 // }
 
-
-
-
-
-
-
 // model subject_generation_rule {
 //   id                 Int         @id @default(autoincrement())
 //   competition_id     Int         @unique(map: "competition_id")
@@ -701,4 +621,3 @@ model candidate_room {
 
 //   @@index([configured_by], map: "configured_by")
 // }
-
