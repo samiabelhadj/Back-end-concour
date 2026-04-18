@@ -50,3 +50,7 @@ Thumbs.db
 pass.js
 docs/
 /src/generated/prisma
+
+*.xlsx
+*.csv
+uploads/

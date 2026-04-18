@@ -1,5 +1,3 @@
-
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -7,22 +5,17 @@ generator client {
 
 datasource db {
   provider = "mysql"
-   url      = env("DATABASE_URL")
-  
+  url      = env("DATABASE_URL")
+}
 
-}
-//leave this one alone
 model academic_module {
-  id                  Int                   @id @default(autoincrement())
-  name                String                @unique(map: "name") @db.VarChar(100)
-  description         String?               @db.Text
-  created_at          DateTime              @default(dbgenerated("(now())")) @db.DateTime(0)
-  // exercise            exercise[]
-  // professor_selection professor_selection[]
-  // role_conflict_log   role_conflict_log[]
-  user_module         user_module[]
+  id          Int           @id @default(autoincrement())
+  name        String        @unique(map: "name") @db.VarChar(100)
+  description String?       @db.Text
+  created_at  DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  user_module user_module[]
 }
-// leave this one
+
 model audit_log {
   id           BigInt   @id @default(autoincrement())
   user_id      Int?
@@ -33,26 +26,7 @@ model audit_log {
   ip_address   String?  @db.VarChar(45)
   logged_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
 }
-/// leave this one 
-// model role_conflict_log {
-//   id              Int              @id @default(autoincrement())
-//   attempted_email String           @db.VarChar(150)
-//   attempted_role  String           @db.VarChar(255)
-//   conflict_reason String           @db.VarChar(255)
-//   competition_id  Int?
-//   module_id       Int?
-//   attempted_by    Int
-//   attempted_at    DateTime         @default(dbgenerated("(now())")) @db.DateTime(0)
-//   competition     competition?     @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_1")
-//   academic_module academic_module? @relation(fields: [module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_2")
-//   users           users            @relation(fields: [attempted_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "role_conflict_log_ibfk_3")
 
-//   @@index([attempted_by], map: "attempted_by")
-//   @@index([competition_id], map: "competition_id")
-//   @@index([module_id], map: "module_id")
-// }
-
-//leave this one 
 model user_module {
   user_id            Int
   academic_module_id Int
@@ -63,9 +37,6 @@ model user_module {
   @@index([academic_module_id], map: "academic_module_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-
-// leave
 model user_role {
   id                                 Int             @id @default(autoincrement())
   user_id                            Int
@@ -78,42 +49,82 @@ model user_role {
   @@unique([user_id, role], map: "user_role_index_0")
   @@index([assigned_by], map: "assigned_by")
 }
-// leave this one 
 
 model users {
-  id                                                            Int                       @id @default(autoincrement())
-  first_name                                                    String                    @db.VarChar(80)
-  last_name                                                     String                    @db.VarChar(80)
-  email                                                         String                    @unique(map: "email") @db.VarChar(150)
-  password_hash                                                 String                    @db.VarChar(255)
-  grade                                                         users_grade?
-  is_active                                                     Boolean                   @default(false)
-  created_at                                                    DateTime                  @default(dbgenerated("(now())")) @db.DateTime(0)
-  updated_at                                                    DateTime                  @default(dbgenerated("(now())")) @db.DateTime(0)
-  faculty                                                       String?                   @db.VarChar(150)
-  // anonymisation_key                                             anonymisation_key[]
-  // attendance                                                    attendance[]
-   //competition                                                   competition[]
-  // competition_phase                                             competition_phase[]
-  // corrector_assignment_corrector_assignment_corrector_idTousers corrector_assignment[]    @relation("corrector_assignment_corrector_idTousers")
- // corrector_assignment_corrector_assignment_assigned_byTousers  corrector_assignment[]    @relation("corrector_assignment_assigned_byTousers")
- // deliberation                                                  deliberation[]
- // deliberation_remark                                           deliberation_remark[]
-  // exam_subject                                                  exam_subject[]
-  // exercise                                                      exercise[]
-  // exercise_version                                              exercise_version[]
-  // grading_discrepancy                                           grading_discrepancy[]
-  // professor_selection_professor_selection_professor_idTousers   professor_selection[]     @relation("professor_selection_professor_idTousers")
-  // professor_selection_professor_selection_selected_byTousers    professor_selection[]     @relation("professor_selection_selected_byTousers")
-  // pv                                                            pv[]
-  // pv_signature                                                  pv_signature[]
-  // result_publication                                            result_publication[]
-  // role_conflict_log                                             role_conflict_log[]
-  // room_supervisor                                               room_supervisor[]
-  // subject_generation_rule                                       subject_generation_rule[]
-  user_module                                                   user_module[]
-  user_role_user_role_user_idTousers                            user_role[]               @relation("user_role_user_idTousers")
-  user_role_user_role_assigned_byTousers                        user_role[]               @relation("user_role_assigned_byTousers")
+  id                                     Int           @id @default(autoincrement())
+  first_name                             String        @db.VarChar(80)
+  last_name                              String        @db.VarChar(80)
+  email                                  String        @unique(map: "email") @db.VarChar(150)
+  password_hash                          String        @db.VarChar(255)
+  grade                                  users_grade?
+  is_active                              Boolean       @default(false)
+  created_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  faculty                                String?       @db.VarChar(150)
+  user_module                            user_module[]
+  user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
+  user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
+}
+
+model candidates {
+  id                          Int       @id @default(autoincrement())
+  candidate_id                String?   @unique @db.VarChar(20)
+
+  // ── Identifiants ────────────────────────────────────────────────────────────
+  annee_bac                   String?
+  matricule_bac               String?
+
+  // ── Informations personnelles ───────────────────────────────────────────────
+  nom                         String    @db.VarChar(80)
+  prenom                      String    @db.VarChar(80)
+  nom_ar                      String?   @db.VarChar(80)
+  prenom_ar                   String?   @db.VarChar(80)
+  date_naissance              DateTime?
+  lieu_naissance              String?   @db.VarChar(100)
+  telephone                   String?   @db.VarChar(20)
+  email                       String    @unique @db.VarChar(150)
+  adresse                     String?   @db.VarChar(255)
+
+  // ── Diplôme et cursus ───────────────────────────────────────────────────────
+  etablissement               String?   @db.VarChar(200)
+  annee_diplome               Int?
+  type_cursus                 String?   @db.VarChar(30)
+  filiere                     String?   @db.VarChar(150)
+  specialite                  String?   @db.VarChar(150)
+  diplome                     String?   @db.VarChar(100)
+
+  // ── Moyennes (BAC+5 uniquement) ─────────────────────────────────────────────
+  categorie_classement_master String?   @db.VarChar(100)
+  moyenne_avant_derniere_ann  Float?
+  moyenne_derniere_annee      Float?
+  note_memoire_master         Float?
+
+  // ── Spécialité demandée ─────────────────────────────────────────────────────
+  specialite_demandee_fr      String?   @db.VarChar(200)
+  specialite_demandee_ar      String?   @db.VarChar(200)
+
+  // ── Lien progres.mesrs.dz ───────────────────────────────────────────────────
+  url_progres                 String?   @db.VarChar(255)
+
+  // ── Catégorie de candidature ────────────────────────────────────────────────
+  sheet_origine               String    @default("LMD") @db.VarChar(20)
+
+  // ── Statut ──────────────────────────────────────────────────────────────────
+  statut                      String    @default("INSCRIT") @db.VarChar(20)
+
+  // ── Timestamps ──────────────────────────────────────────────────────────────
+  created_at                  DateTime  @default(now())
+  updated_at                  DateTime? @updatedAt
+}
+
+model import_logs {
+  id          Int      @id @default(autoincrement())
+  filename    String   @db.VarChar(255)
+  total_lines Int
+  imported    Int
+  errors      Int
+  imported_by Int
+  created_at  DateTime @default(now())
 }
 
 enum user_role_role {
@@ -132,472 +143,3 @@ enum users_grade {
   professeur
   IT_engineer @map("IT engineer")
 }
-
-
-
-// model competition {
-//   id                      Int                      @id @default(autoincrement())
-//   name                    String                   @db.VarChar(150)
-//   academic_year           String                   @db.VarChar(9)
-//   description             String?                  @db.Text
-//   max_admitted            Int                      @default(10)
-//   waiting_list_size       Int                      @default(5)
-//   discrepancy_threshold   Decimal                  @default(3.00) @db.Decimal(5, 2)
-//   created_by              Int
-//   created_at              DateTime                 @default(dbgenerated("(now())")) @db.DateTime(0)
-//   // anonymised_copy         anonymised_copy[]
-//   // candidate               candidate[]
-//   users                   users                    @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_ibfk_1")
-//   // competition_phase       competition_phase[]
-//   // deliberation            deliberation?
-//   // exam_room               exam_room[]
-//   // exam_subject            exam_subject?
-//   // exercise                exercise[]
-//   // professor_selection     professor_selection[]
-//   // pv                      pv[]
-//   // ranking                 ranking[]
-//   // result_publication      result_publication?
-//    role_conflict_log       role_conflict_log[]
-//   // subject_generation_rule subject_generation_rule?
-
-//   @@index([created_by], map: "created_by")
-// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-// model anonymisation_key {
-//   id             Int       @id @default(autoincrement())
-//   candidate_id   Int       @unique(map: "candidate_id")
-//   anonymous_code String    @unique(map: "anonymous_code") @db.VarChar(20)
-//   encrypted_link Bytes     @db.VarBinary(512)
-//   revealed       Boolean   @default(false)
-//   revealed_at    DateTime? @db.DateTime(0)
-//   revealed_by    Int?
-//   candidate      candidate @relation(fields: [candidate_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "anonymisation_key_ibfk_1")
-//   users          users?    @relation(fields: [revealed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "anonymisation_key_ibfk_2")
-
-//   @@index([revealed_by], map: "revealed_by")
-// }
-
-// /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-// model anonymised_copy {
-//   id                   Int                    @id @default(autoincrement())
-//   competition_id       Int
-//   anonymous_code       String                 @unique(map: "anonymous_code") @db.VarChar(20)
-//   scan_file_path       String?                @db.VarChar(500)
-//   qr_code_data         String?                @db.VarChar(255)
-//   is_absent            Boolean                @default(false)
-//   created_at           DateTime               @default(dbgenerated("(now())")) @db.DateTime(0)
-//   competition          competition            @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "anonymised_copy_ibfk_1")
-//   corrector_assignment corrector_assignment[]
-//   grading_discrepancy  grading_discrepancy?
-//   ranking              ranking?
-
-//   @@index([competition_id], map: "competition_id")
-// }
-
-// model attendance {
-//   id            Int       @id @default(autoincrement())
-//   candidate_id  Int       @unique(map: "candidate_id")
-//   room_id       Int
-//   supervisor_id Int
-//   is_present    Boolean   @default(false)
-//   remarks       String?   @db.Text
-//   recorded_at   DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
-//   candidate     candidate @relation(fields: [candidate_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "attendance_ibfk_1")
-//   exam_room     exam_room @relation(fields: [room_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "attendance_ibfk_2")
-//   users         users     @relation(fields: [supervisor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "attendance_ibfk_3")
-
-//   @@index([room_id], map: "room_id")
-//   @@index([supervisor_id], map: "supervisor_id")
-// }
-
-
-
-
-model candidates {
-  id           Int      @id @default(autoincrement())
-  candidate_id String   @unique @db.VarChar(20)
-  nom          String   @db.VarChar(80)
-  prenom       String   @db.VarChar(80)
-  email        String   @unique @db.VarChar(150)
-  specialite   String?  @db.VarChar(150)
-  diplome      String?  @db.VarChar(100)
-  statut       String   @default("INSCRIT") @db.VarChar(20)
-  created_at   DateTime @default(now())
-}
-
-
-
-model import_logs {
-  id          Int      @id @default(autoincrement())
-  filename    String   @db.VarChar(255)
-  total_lines Int
-  imported    Int
-  errors      Int
-  imported_by Int
-  created_at  DateTime @default(now())
-}
-
-// model competition_phase {
-//   id                       Int                       @id @default(autoincrement())
-//   competition_id           Int
-//   phase_order              Int
-//   opened_at                DateTime?                 @db.DateTime(0)
-//   closed_at                DateTime?                 @db.DateTime(0)
-//   closed_by                Int?
-//   phase_name_id            Int?
-//   status_id                Int?
-//   competition              competition               @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_phase_ibfk_1")
-//   users                    users?                    @relation(fields: [closed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "competition_phase_ibfk_2")
-//   competition_phase_name   competition_phase_name?   @relation(fields: [phase_name_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_competition_phase_name")
-//   competition_phase_status competition_phase_status? @relation(fields: [status_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_competition_phase_status")
-
-//   @@unique([competition_id, phase_order], map: "competition_phase_index_1")
-//   @@index([closed_by], map: "closed_by")
-//   @@index([phase_name_id], map: "fk_competition_phase_name")
-//   @@index([status_id], map: "fk_competition_phase_status")
-// }
-
-// model competition_phase_name {
-//   id                Int                 @id @default(autoincrement())
-//   name              String              @unique(map: "name") @db.VarChar(50)
-//   competition_phase competition_phase[]
-// }
-
-// model competition_phase_status {
-//   id                Int                 @id @default(autoincrement())
-//   name              String              @unique(map: "name") @db.VarChar(50)
-//   competition_phase competition_phase[]
-// }
-
-
-// model correction {
-//   id                        Int                         @id @default(autoincrement())
-//   corrector_assignment_id   Int                         @unique(map: "corrector_assignment_id")
-//   total_score               Decimal?                    @db.Decimal(5, 2)
-//   is_validated              Boolean                     @default(false)
-//   validated_at              DateTime?                   @db.DateTime(0)
-//   corrector_assignment      corrector_assignment        @relation(fields: [corrector_assignment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "correction_ibfk_1")
-//   correction_exercise_score correction_exercise_score[]
-// }
-
-// model correction_exercise_score {
-//   id            Int        @id @default(autoincrement())
-//   correction_id Int
-//   exercise_id   Int
-//   score         Decimal    @db.Decimal(5, 2)
-//   correction    correction @relation(fields: [correction_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "correction_exercise_score_ibfk_1")
-//   exercise      exercise   @relation(fields: [exercise_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "correction_exercise_score_ibfk_2")
-
-//   @@unique([correction_id, exercise_id], map: "correction_exercise_score_index_5")
-//   @@index([exercise_id], map: "exercise_id")
-// }
-
-
-// model corrector_assignment {
-//   id                                             Int             @id @default(autoincrement())
-//   anonymised_copy_id                             Int
-//   corrector_id                                   Int
-//   correction_round                               Int             @db.TinyInt
-//   assigned_at                                    DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
-//   assigned_by                                    Int
-//   correction                                     correction?
-//   anonymised_copy                                anonymised_copy @relation(fields: [anonymised_copy_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "corrector_assignment_ibfk_1")
-//   users_corrector_assignment_corrector_idTousers users           @relation("corrector_assignment_corrector_idTousers", fields: [corrector_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "corrector_assignment_ibfk_2")
-//   users_corrector_assignment_assigned_byTousers  users           @relation("corrector_assignment_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "corrector_assignment_ibfk_3")
-
-//   @@unique([anonymised_copy_id, corrector_id, correction_round], map: "corrector_assignment_index_4")
-//   @@index([assigned_by], map: "assigned_by")
-//   @@index([corrector_id], map: "corrector_id")
-// }
-
-
-// model deliberation {
-//   id                  Int                   @id @default(autoincrement())
-//   competition_id      Int                   @unique(map: "competition_id")
-//   min_score           Decimal               @default(10.00) @db.Decimal(5, 2)
-//   closed_by           Int?
-//   closed_at           DateTime?             @db.DateTime(0)
-//   pv_id               Int?
-//   status_id           Int                   @default(2)
-//   competition         competition           @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "deliberation_ibfk_1")
-//   users               users?                @relation(fields: [closed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "deliberation_ibfk_2")
-//   pv                  pv?                   @relation(fields: [pv_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "deliberation_ibfk_3")
-//   deliberation_status deliberation_status   @relation(fields: [status_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_deliberation_status")
-//   deliberation_remark deliberation_remark[]
-
-//   @@index([closed_by], map: "closed_by")
-//   @@index([status_id], map: "fk_deliberation_status")
-//   @@index([pv_id], map: "pv_id")
-// }
-
-// model deliberation_remark {
-//   id              Int          @id @default(autoincrement())
-//   deliberation_id Int
-//   jury_member_id  Int
-//   remark          String       @db.Text
-//   created_at      DateTime     @default(dbgenerated("(now())")) @db.DateTime(0)
-//   deliberation    deliberation @relation(fields: [deliberation_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "deliberation_remark_ibfk_1")
-//   users           users        @relation(fields: [jury_member_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "deliberation_remark_ibfk_2")
-
-//   @@index([deliberation_id], map: "deliberation_id")
-//   @@index([jury_member_id], map: "jury_member_id")
-// }
-
-// model deliberation_status {
-//   id           Int            @id @default(autoincrement())
-//   name         String         @unique(map: "name") @db.VarChar(20)
-//   deliberation deliberation[]
-// }
-
-
-// model exam_room {
-//   id              Int               @id @default(autoincrement())
-//   competition_id  Int
-//   name            String            @db.VarChar(100)
-//   capacity        Int
-//   attendance      attendance[]
-//   candidate       candidate[]
-//   competition     competition       @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exam_room_ibfk_1")
-//   room_supervisor room_supervisor[]
-
-//   @@index([competition_id], map: "competition_id")
-// }
-
-
-// model exam_subject {
-//   id                    Int                     @id @default(autoincrement())
-//   competition_id        Int                     @unique(map: "competition_id")
-//   pdf_path              String                  @db.VarChar(500)
-//   generated_by          Int
-//   generated_at          DateTime                @default(dbgenerated("(now())")) @db.DateTime(0)
-//   is_locked             Boolean                 @default(true)
-//   competition           competition             @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exam_subject_ibfk_1")
-//   users                 users                   @relation(fields: [generated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exam_subject_ibfk_2")
-//   exam_subject_exercise exam_subject_exercise[]
-
-//   @@index([generated_by], map: "generated_by")
-// }
-
-
-// model exam_subject_exercise {
-//   exam_subject_id Int
-//   exercise_id     Int
-//   display_order   Int
-//   exam_subject    exam_subject @relation(fields: [exam_subject_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exam_subject_exercise_ibfk_1")
-//   exercise        exercise     @relation(fields: [exercise_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exam_subject_exercise_ibfk_2")
-
-//   @@id([exam_subject_id, exercise_id])
-//   @@index([exercise_id], map: "exercise_id")
-// }
-
-
-// model exercise {
-//   id                        Int                         @id @default(autoincrement())
-//   competition_id            Int
-//   professor_id              Int
-//   academic_module_id        Int?
-//   title                     String                      @db.VarChar(255)
-//   description               String                      @db.Text
-//   points                    Decimal                     @db.Decimal(5, 2)
-//   expected_answer           String?                     @db.Text
-//   file_path                 String?                     @db.VarChar(500)
-//   is_locked                 Boolean                     @default(false)
-//   created_at                DateTime                    @default(dbgenerated("(now())")) @db.DateTime(0)
-//   difficulty_id             Int?
-//   file_type_id              Int?
-//   correction_exercise_score correction_exercise_score[]
-//   exam_subject_exercise     exam_subject_exercise[]
-//   competition               competition                 @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exercise_ibfk_1")
-//   users                     users                       @relation(fields: [professor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exercise_ibfk_2")
-//   academic_module           academic_module?            @relation(fields: [academic_module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exercise_ibfk_3")
-//   exercise_difficulty       exercise_difficulty?        @relation(fields: [difficulty_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_exercise_difficulty")
-//   exercise_file_type        exercise_file_type?         @relation(fields: [file_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_exercise_file_type")
-//   exercise_version          exercise_version[]
-
-//   @@index([academic_module_id], map: "academic_module_id")
-//   @@index([competition_id], map: "competition_id")
-//   @@index([difficulty_id], map: "fk_exercise_difficulty")
-//   @@index([file_type_id], map: "fk_exercise_file_type")
-//   @@index([professor_id], map: "professor_id")
-// }
-
-// model exercise_difficulty {
-//   id       Int        @id @default(autoincrement())
-//   name     String     @unique(map: "name") @db.VarChar(20)
-//   exercise exercise[]
-// }
-
-// model exercise_file_type {
-//   id       Int        @id @default(autoincrement())
-//   name     String     @unique(map: "name") @db.VarChar(20)
-//   exercise exercise[]
-// }
-
-
-// model exercise_version {
-//   id             Int      @id @default(autoincrement())
-//   exercise_id    Int
-//   version_number Int      @default(1)
-//   description    String   @db.Text
-//   file_path      String?  @db.VarChar(500)
-//   modified_by    Int
-//   modified_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
-//   exercise       exercise @relation(fields: [exercise_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exercise_version_ibfk_1")
-//   users          users    @relation(fields: [modified_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "exercise_version_ibfk_2")
-
-//   @@index([exercise_id], map: "exercise_id")
-//   @@index([modified_by], map: "modified_by")
-// }
-
-// model grading_discrepancy {
-//   id                 Int             @id @default(autoincrement())
-//   anonymised_copy_id Int             @unique(map: "anonymised_copy_id")
-//   score_round_1      Decimal         @db.Decimal(5, 2)
-//   score_round_2      Decimal         @db.Decimal(5, 2)
-//   score_round_3      Decimal?        @db.Decimal(5, 2)
-//   gap                Decimal         @db.Decimal(5, 2)
-//   threshold          Decimal         @db.Decimal(5, 2)
-//   third_corrector_id Int?
-//   final_score        Decimal?        @db.Decimal(5, 2)
-//   resolved_at        DateTime?       @db.DateTime(0)
-//   anonymised_copy    anonymised_copy @relation(fields: [anonymised_copy_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "grading_discrepancy_ibfk_1")
-//   users              users?          @relation(fields: [third_corrector_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "grading_discrepancy_ibfk_2")
-
-//   @@index([third_corrector_id], map: "third_corrector_id")
-// }
-
-
-// model professor_selection {
-//   id                                            Int             @id @default(autoincrement())
-//   competition_id                                Int
-//   professor_id                                  Int
-//   academic_module_id                            Int
-//   submission_deadline                           DateTime        @db.DateTime(0)
-//   selected_at                                   DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
-//   selected_by                                   Int
-//   competition                                   competition     @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "professor_selection_ibfk_1")
-//   users_professor_selection_professor_idTousers users           @relation("professor_selection_professor_idTousers", fields: [professor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "professor_selection_ibfk_2")
-//   academic_module                               academic_module @relation(fields: [academic_module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "professor_selection_ibfk_3")
-//   users_professor_selection_selected_byTousers  users           @relation("professor_selection_selected_byTousers", fields: [selected_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "professor_selection_ibfk_4")
-
-//   @@unique([competition_id, professor_id], map: "professor_selection_index_2")
-//   @@index([academic_module_id], map: "academic_module_id")
-//   @@index([professor_id], map: "professor_id")
-//   @@index([selected_by], map: "selected_by")
-// }
-
-// model pv {
-//   id             Int            @id @default(autoincrement())
-//   competition_id Int
-//   file_path      String         @db.VarChar(500)
-//   generated_by   Int
-//   generated_at   DateTime       @default(dbgenerated("(now())")) @db.DateTime(0)
-//   is_signed      Boolean        @default(false)
-//   pv_type_id     Int?
-//   deliberation   deliberation[]
-//   pv_type        pv_type?       @relation(fields: [pv_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pv_type")
-//   competition    competition    @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pv_ibfk_1")
-//   users          users          @relation(fields: [generated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pv_ibfk_2")
-//   pv_signature   pv_signature[]
-
-//   @@index([competition_id], map: "competition_id")
-//   @@index([pv_type_id], map: "fk_pv_type")
-//   @@index([generated_by], map: "generated_by")
-// }
-
-// model pv_signature {
-//   id        Int      @id @default(autoincrement())
-//   pv_id     Int
-//   signer_id Int
-//   signed_at DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
-//   signature String?  @db.Text
-//   pv        pv       @relation(fields: [pv_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pv_signature_ibfk_1")
-//   users     users    @relation(fields: [signer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "pv_signature_ibfk_2")
-
-//   @@unique([pv_id, signer_id], map: "pv_signature_index_6")
-//   @@index([signer_id], map: "signer_id")
-// }
-
-// model pv_type {
-//   id   Int    @id @default(autoincrement())
-//   name String @unique(map: "name") @db.VarChar(50)
-//   pv   pv[]
-// }
-
-// model ranking {
-//   id                 Int             @id @default(autoincrement())
-//   competition_id     Int
-//   anonymised_copy_id Int             @unique(map: "anonymised_copy_id")
-//   final_score        Decimal         @db.Decimal(5, 2)
-//   rank_position      Int?
-//   is_admitted        Boolean         @default(false)
-//   is_waiting_list    Boolean         @default(false)
-//   is_eliminated      Boolean         @default(false)
-//   generated_at       DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
-//   competition        competition     @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "ranking_ibfk_1")
-//   anonymised_copy    anonymised_copy @relation(fields: [anonymised_copy_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "ranking_ibfk_2")
-
-//   @@index([competition_id], map: "competition_id")
-// }
-
-// model result_publication {
-//   id             Int         @id @default(autoincrement())
-//   competition_id Int         @unique(map: "competition_id")
-//   published_by   Int
-//   published_at   DateTime    @default(dbgenerated("(now())")) @db.DateTime(0)
-//   pdf_path       String?     @db.VarChar(500)
-//   excel_path     String?     @db.VarChar(500)
-//   emails_sent    Boolean     @default(false)
-//   competition    competition @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "result_publication_ibfk_1")
-//   users          users       @relation(fields: [published_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "result_publication_ibfk_2")
-
-//   @@index([published_by], map: "published_by")
-// }
-
-
-
-
-// model room_supervisor {
-//   room_id       Int
-//   supervisor_id Int
-//   exam_room     exam_room @relation(fields: [room_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "room_supervisor_ibfk_1")
-//   users         users     @relation(fields: [supervisor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "room_supervisor_ibfk_2")
-
-//   @@id([room_id, supervisor_id])
-//   @@index([supervisor_id], map: "supervisor_id")
-// }
-
-
-// model subject_generation_rule {
-//   id                 Int         @id @default(autoincrement())
-//   competition_id     Int         @unique(map: "competition_id")
-//   total_exercises    Int
-//   total_points       Decimal     @db.Decimal(5, 2)
-//   min_hard_exercises Int         @default(1)
-//   min_easy_exercises Int         @default(1)
-//   configured_by      Int
-//   configured_at      DateTime    @default(dbgenerated("(now())")) @db.DateTime(0)
-//   competition        competition @relation(fields: [competition_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "subject_generation_rule_ibfk_1")
-//   users              users       @relation(fields: [configured_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "subject_generation_rule_ibfk_2")
-
-//   @@index([configured_by], map: "configured_by")
-// }
-
