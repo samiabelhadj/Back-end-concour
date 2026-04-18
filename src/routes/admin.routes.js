@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const UserAdminController = require("../controllers/UserAdmin.controller");
 const moduleController = require("../controllers/module.controller")
+const AuditLogController = require("../controllers/audit.controller")
 const {verifyToken,requireRole} =require("../middleware/auth.middleware")
 
  
@@ -24,6 +25,8 @@ router.patch('/modules/:id',moduleController.updateModule);
    // Hard delete (permanent removal)
 router.delete('/users/:id/permanent', UserAdminController.hardDeleteUser);
 
+// audit log 
+router.get("/audit-logs",AuditLogController.getAuditLog)
    
 
 module.exports = router;
