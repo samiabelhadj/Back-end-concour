@@ -6,7 +6,7 @@ const { verifyToken } = require("../middleware/auth.middleware");
 
 const upload = multer({ dest: "uploads/" });
 
-router.get("/stats",   verifyToken, candidateController.getStats);
+
 router.get("/export",  verifyToken, candidateController.exportCandidates);
 router.post("/import", verifyToken, upload.single("file"), candidateController.importCandidates);
 router.get("/",        verifyToken, candidateController.getAllCandidates);
