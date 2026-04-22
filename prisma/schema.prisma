@@ -51,19 +51,24 @@ model user_role {
 }
 
 model users {
-  id                                     Int           @id @default(autoincrement())
-  first_name                             String        @db.VarChar(80)
-  last_name                              String        @db.VarChar(80)
-  email                                  String        @unique(map: "email") @db.VarChar(150)
-  password_hash                          String        @db.VarChar(255)
+  id                                     Int             @id @default(autoincrement())
+  first_name                             String          @db.VarChar(80)
+  last_name                              String          @db.VarChar(80)
+  email                                  String          @unique(map: "email") @db.VarChar(150)
+  password_hash                          String          @db.VarChar(255)
   grade                                  users_grade?
-  is_active                              Boolean       @default(false)
-  created_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
-  updated_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
-  faculty                                String?       @db.VarChar(150)
+  is_active                              Boolean         @default(false)
+  created_at                             DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at                             DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
+  faculty                                String?         @db.VarChar(150)
+  role                                   user_role_role  @default(coordinator)
   user_module                            user_module[]
-  user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
-  user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
+  user_role_user_role_user_idTousers     user_role[]     @relation("user_role_user_idTousers")
+  user_role_user_role_assigned_byTousers user_role[]     @relation("user_role_assigned_byTousers")
+
+  // Relations from new User model
+  phasesCreated Phase[]   @relation("PhaseCreator")
+  phasesClosed  Phase[]   @relation("PhaseCloser")
 }
 
 model candidates {
@@ -142,4 +147,33 @@ enum users_grade {
   MCA
   professeur
   IT_engineer @map("IT engineer")
+}
+
+enum PhaseStatus {
+  PENDING
+  IN_PROGRESS
+  CLOSED
+}
+
+// ─── MODELS ──────────────────────────────────────────────────────────────────
+
+model Phase {
+  id          Int         @id @default(autoincrement())
+  name        String
+  description String?
+  phaseOrder  Int         @map("phase_order")
+  startDate   DateTime?   @map("start_date")
+  endDate     DateTime?   @map("end_date")
+  status      PhaseStatus @default(PENDING)
+
+  createdById Int         @map("created_by_id") // ← Admin qui crée
+  closedById  Int?        @map("closed_by_id")  // ← Coordinator qui ferme
+  closedAt    DateTime?   @map("closed_at")
+  createdAt   DateTime    @default(now())        @map("created_at")
+  updatedAt   DateTime    @updatedAt             @map("updated_at")
+
+  createdBy   users       @relation("PhaseCreator", fields: [createdById], references: [id])
+  closedBy    users?      @relation("PhaseCloser",  fields: [closedById],  references: [id])
+
+  @@map("phases")
 }
