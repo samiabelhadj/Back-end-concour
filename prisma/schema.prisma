@@ -63,12 +63,8 @@ model users {
   faculty                                String?         @db.VarChar(150)
   role                                   user_role_role  @default(coordinator)
   user_module                            user_module[]
-  user_role_user_role_user_idTousers     user_role[]     @relation("user_role_user_idTousers")
-  user_role_user_role_assigned_byTousers user_role[]     @relation("user_role_assigned_byTousers")
-
-  // Relations from new User model
-  phasesCreated Phase[]   @relation("PhaseCreator")
-  phasesClosed  Phase[]   @relation("PhaseCloser")
+  user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
+  user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
 }
 
 model candidates {
@@ -147,6 +143,195 @@ enum users_grade {
   MCA
   professeur
   IT_engineer @map("IT engineer")
+}
+
+model competition {
+  id                    Int         @id @default(autoincrement())
+  name                  String      @db.VarChar(200)
+  academic_year         String      @db.VarChar(20)
+  description           String?     @db.Text
+  max_admitted          Int?
+  waiting_list_size     Int?
+  discrepancy_threshold Decimal?    @db.Decimal(5, 2) //used to trigger a 3rd corrector.
+  affectation           Affectation @default(MANUEL)
+  created_by            Int
+  created_at            DateTime    @default(now())
+
+  creator          users              @relation(fields: [created_by], references: [id])
+  candidates       candidates[]
+  examSessions     exam_session[]
+  competitionRooms competition_room[]
+
+  @@index([created_by], map: "created_by") //add index for created_by to optimize queries filtering by creator
+}
+
+enum Affectation {
+  MANUEL
+  AUTOMATIQUE
+}
+
+model candidates {
+  id             Int     @id @default(autoincrement())
+  candidate_id   String? @unique @db.VarChar(20)
+  competition_id Int
+
+  // ── Identifiants ────────────────────────────────────────────────────────────
+  annee_bac     String?
+  matricule_bac String?
+
+  // ── Informations personnelles ───────────────────────────────────────────────
+  nom            String    @db.VarChar(80)
+  prenom         String    @db.VarChar(80)
+  nom_ar         String?   @db.VarChar(80)
+  prenom_ar      String?   @db.VarChar(80)
+  date_naissance DateTime?
+  lieu_naissance String?   @db.VarChar(100)
+  telephone      String?   @db.VarChar(20)
+  email          String    @unique @db.VarChar(150)
+  adresse        String?   @db.VarChar(255)
+
+  // ── Diplôme et cursus ───────────────────────────────────────────────────────
+  etablissement String? @db.VarChar(200)
+  annee_diplome Int?
+  type_cursus   String? @db.VarChar(30)
+  filiere       String? @db.VarChar(150)
+  specialite    String? @db.VarChar(150)
+  diplome       String? @db.VarChar(100)
+
+  // ── Moyennes (BAC+5 uniquement) ─────────────────────────────────────────────
+  categorie_classement_master String? @db.VarChar(100)
+  moyenne_avant_derniere_ann  Float?
+  moyenne_derniere_annee      Float?
+  note_memoire_master         Float?
+
+  // ── Spécialité demandée ─────────────────────────────────────────────────────
+  specialite_demandee_fr String? @db.VarChar(200)
+  specialite_demandee_ar String? @db.VarChar(200)
+
+  // ── Lien progres.mesrs.dz ───────────────────────────────────────────────────
+  url_progres String? @db.VarChar(255)
+
+  // ── Catégorie de candidature ────────────────────────────────────────────────
+  sheet_origine String @default("LMD") @db.VarChar(20)
+
+  // ── Statut ──────────────────────────────────────────────────────────────────
+  statut String @default("INSCRIT") @db.VarChar(20)
+
+  // ── Timestamps ──────────────────────────────────────────────────────────────
+  created_at DateTime  @default(now())
+  updated_at DateTime? @updatedAt
+
+  //   anonymisation_key   anonymisation_key?
+  attendance      attendance[]
+  candidate_rooms candidate_room[]
+
+  competition competition? @relation(fields: [competition_id], references: [id])
+
+  examRoom    exam_room? @relation(fields: [exam_roomId], references: [id])
+  exam_roomId Int?
+}
+
+model room_supervisor {
+  room_id       Int
+  supervisor_id Int
+  exam_room     exam_room @relation(fields: [room_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "room_supervisor_ibfk_1")
+  users         users     @relation(fields: [supervisor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "room_supervisor_ibfk_2")
+
+  @@id([room_id, supervisor_id])
+  @@index([supervisor_id], map: "supervisor_id")
+}
+
+model exam_session {
+  id             Int      @id @default(autoincrement())
+  competition_id Int
+  name           String   @db.VarChar(100)
+  start_time     DateTime
+  end_time       DateTime
+
+  competition     competition      @relation(fields: [competition_id], references: [id])
+  attendance      attendance[]
+  candidate_rooms candidate_room[]
+
+  @@unique([competition_id, name])
+  @@index([competition_id])
+}
+
+model attendance {
+  id            Int @id @default(autoincrement())
+  candidate_id  Int
+  room_id       Int
+  supervisor_id Int
+  session_id    Int
+
+  is_present  Boolean  @default(false)
+  remarks     String?  @db.Text
+  recorded_at DateTime @default(now())
+
+  candidate  candidates   @relation(fields: [candidate_id], references: [id])
+  exam_room  exam_room    @relation(fields: [room_id], references: [id])
+  supervisor users        @relation(fields: [supervisor_id], references: [id])
+  session    exam_session @relation(fields: [session_id], references: [id])
+
+  @@unique([candidate_id, session_id])
+}
+
+model exam_room {
+  id Int @id @default(autoincrement())
+
+  name       String         @db.VarChar(100)
+  capacity   Int
+  block      String?        @db.VarChar(100)
+  status     ExamRoomStatus @default(AVAILABLE)
+  created_at DateTime       @default(now())
+  attendance attendance[]
+  candidates candidates[]
+
+  room_supervisor room_supervisor[]
+  candidate_rooms candidate_room[]
+
+  equipments       equipments[]
+  competitionRooms competition_room[]
+}
+
+enum ExamRoomStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  OUT_OF_SERVICE
+  CLOSED
+}
+
+model equipments {
+  id          Int       @id @default(autoincrement())
+  room_id     Int
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
+  created_at  DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
+  room        exam_room @relation(fields: [room_id], references: [id])
+}
+
+model candidate_room {
+  candidate_id Int
+  room_id      Int
+  exam_id      Int // which exam requires this room
+  place_number Int?
+
+  candidate      candidates    @relation(fields: [candidate_id], references: [id])
+  room           exam_room     @relation(fields: [room_id], references: [id])
+  examSession    exam_session? @relation(fields: [exam_sessionId], references: [id])
+  exam_sessionId Int?
+
+  @@id([candidate_id, room_id, exam_id])
+}
+
+model competition_room {
+  competition_id  Int
+  room_id         Int
+  places_occupied Int         @default(0)
+  competition     competition @relation(fields: [competition_id], references: [id])
+  exam_room       exam_room   @relation(fields: [room_id], references: [id])
+
+  @@id([competition_id, room_id])
 }
 
 enum PhaseStatus {
