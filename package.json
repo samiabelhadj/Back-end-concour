@@ -18,7 +18,7 @@
   },
   "homepage": "https://github.com/samiabelhadj/Back-end-concour#readme",
   "dependencies": {
-    "@prisma/client": "^7.7.0",
+    "@prisma/client": "^6.19.3",
     "@prisma/config": "^7.7.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
@@ -33,7 +33,10 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "nodemon": "^3.1.14",
-    "prisma": "^6.19.3"
+    "prisma": "^6.19.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
   }
 }
