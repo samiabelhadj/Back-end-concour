@@ -15,5 +15,5 @@ async function connectDB() {
 }
 
 connectDB();
+module.exports = require('./db.prisma');
 
-module.exports = prisma;

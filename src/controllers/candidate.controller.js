@@ -1,4 +1,4 @@
-const db = require("../config/db.mysql");
+const db = require("../config/db");
 const fs = require("fs");
 const csv = require("csv-parser");
 const XLSX = require("xlsx");

@@ -1,4 +1,4 @@
-const db = require('../config/db.mysql')
+const db = require('../config/db')
  
 // ─────────────────────────────────────────
 // GET /api/modules

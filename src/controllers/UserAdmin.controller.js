@@ -1,4 +1,4 @@
-const db  = require('../config/db.mysql')
+const db  = require('../config/db')
 const bcrypt = require("bcrypt");
 const {checkRoleConflicts }= require('../services/roleConflict.service')
 const {sendCredentialsEmail }= require('../services/email.service')

@@ -1,4 +1,4 @@
-const prisma = require('../config/db.prisma');
+const prisma = require('../config/db');
 
 const ALLOWED_STATUSES = ['PRESENT', 'ABSENT'];
 
@@ -14,7 +14,7 @@ async function insertAuditLog({
   ip_address
 }) {
   try {
-    await prisma.auditLog.create({
+    await prisma.audit_log.create({
       data: {
         user_id,
         action,
@@ -34,7 +34,7 @@ async function insertAuditLog({
    Check supervisor owns room for exam
 ───────────────────────────────────────────── */
 async function verifySupervisorAccess({ supervisorId, candidateId, sessionId }) {
-  return prisma.candidateRoom.findFirst({
+  return prisma.candidate_room.findFirst({
     where: {
       candidate_id: candidateId,
       exam: {
@@ -65,7 +65,7 @@ exports.getCandidates = async (req, res) => {
   }
 
   try {
-    const session = await prisma.examSession.findUnique({
+    const session = await prisma.exam_session.findUnique({
       where: { id: sessionId }
     });
 
@@ -74,7 +74,7 @@ exports.getCandidates = async (req, res) => {
     }
 
     // candidates in supervisor's assigned rooms
-    const rows = await prisma.candidateRoom.findMany({
+    const rows = await prisma.candidate_room.findMany({
       where: {
         exam: {
           room_supervisors: {
@@ -241,7 +241,7 @@ exports.getAttendanceSummary = async (req, res) => {
   }
 
   try {
-    const candidates = await prisma.candidateRoom.findMany({
+    const candidates = await prisma.candidate_room.findMany({
       where: {
         exam: {
           room_supervisors: {
