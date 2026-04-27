@@ -14,7 +14,7 @@ async function insertAuditLog({
   ip_address
 }) {
   try {
-    await prisma.audit_log.create({
+    await prisma.auditLog.create({
       data: {
         user_id,
         action,
@@ -34,11 +34,11 @@ async function insertAuditLog({
    Check supervisor owns room for exam
 ───────────────────────────────────────────── */
 async function verifySupervisorAccess({ supervisorId, candidateId, sessionId }) {
-  return prisma.candidate_room.findFirst({
+  return prisma.candidateRoom.findFirst({
     where: {
       candidate_id: candidateId,
       exam: {
-        room_supervisors: {
+        roomSupervisor: {
           some: {
             supervisor_id: supervisorId
           }
@@ -65,7 +65,7 @@ exports.getCandidates = async (req, res) => {
   }
 
   try {
-    const session = await prisma.exam_session.findUnique({
+    const session = await prisma.examSession.findUnique({
       where: { id: sessionId }
     });
 
@@ -74,10 +74,10 @@ exports.getCandidates = async (req, res) => {
     }
 
     // candidates in supervisor's assigned rooms
-    const rows = await prisma.candidate_room.findMany({
+    const rows = await prisma.candidateRoom.findMany({
       where: {
-        exam: {
-          room_supervisors: {
+        room: {
+          roomSupervisor: {
             some: { supervisor_id: supervisorId }
           }
         },
@@ -228,10 +228,7 @@ exports.markAttendance = async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 };
-
-/* ─────────────────────────────────────────────
-   3. ATTENDANCE SUMMARY
-───────────────────────────────────────────── */
+//attendece summary
 exports.getAttendanceSummary = async (req, res) => {
   const supervisorId = req.user.userId;
   const sessionId = parseInt(req.params.sessionId, 10);
@@ -241,14 +238,14 @@ exports.getAttendanceSummary = async (req, res) => {
   }
 
   try {
-    const candidates = await prisma.candidate_room.findMany({
+    const candidates = await prisma.candidateRoom.findMany({
       where: {
-        exam: {
-          room_supervisors: {
+        session_id: sessionId,
+        room: {                        // ✅ through room, not exam
+          roomSupervisor: {
             some: { supervisor_id: supervisorId }
           }
-        },
-        session_id: sessionId
+        }
       },
       select: {
         candidate_id: true,
@@ -274,7 +271,6 @@ exports.getAttendanceSummary = async (req, res) => {
 
     candidates.forEach(c => {
       const val = map.get(`${c.candidate_id}-${c.room_id}`);
-
       if (val === true) present++;
       else if (val === false) absent++;
       else notMarked++;

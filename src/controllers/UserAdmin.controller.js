@@ -1,140 +1,104 @@
-const db  = require('../config/db')
+const prisma  = require('../config/db')
 const bcrypt = require("bcrypt");
 const {checkRoleConflicts }= require('../services/roleConflict.service')
 const {sendCredentialsEmail }= require('../services/email.service')
 const {generatePassword}  = require("../services/password.service")
 
- 
+
 // ─────────────────────────────────────────
 // POST /api/admin/users
 // Create a user with  roles and modules
 // ─────────────────────────────────────────
 exports.createUser = async (req, res) => {
-  const connection = await db.getConnection()
-
   try {
-    await connection.beginTransaction()
-
     const {
       first_name,
       last_name,
       email,
-      grade,          
-      module_ids,      // array of modules ids this user belongs to
+      grade,
+      module_ids,
       roles,
-      faculty      
+      faculty
     } = req.body
 
-    if (!first_name || !last_name || !email || !roles || roles.length === 0||!faculty) {
-      return res.status(400).json({
-        message: 'please enter all the required informations'
-      })
+    if (!first_name || !last_name || !email || !roles || roles.length === 0 || !faculty) {
+      return res.status(400).json({ message: 'please enter all required informations' })
     }
 
-    // Check email uniqueness
-    const [existing] = await connection.query(
-      'SELECT id FROM users WHERE email = ?', [email]
-    )
-    if (existing.length > 0) {
+    const existing = await prisma.users.findUnique({
+      where: { email }
+    })
+
+    if (existing) {
       return res.status(409).json({ message: 'Email already exists' })
-    } 
+    }
 
-    // Check role conflicts
-   
-  //   const conflict = await checkRoleConflicts(null, roles)
-  //    console.log("conflict",conflict)
-  //   if (conflict.hasConflict) {
-  // // log conflict outside the transaction
-  // await db.query(
-  //   `INSERT INTO role_conflict_log
-  //     (attempted_email, attempted_role, conflict_reason, attempted_by, attempted_at)
-  //    VALUES (?, ?, ?, ?, NOW())`,
-  //   [email, roles.join(','), conflict.reason, req.user.userId]
-  // );
-
-//   await connection.rollback(); // rollback user creation
-//   return res.status(409).json({
-//     message: 'Role conflict detected',
-//     reason: conflict.reason
-//   });
-// }
-
-    // Generate password and hash it
-    
     const plainPassword = generatePassword()
     const password_hash = await bcrypt.hash(plainPassword, 12)
 
-    // Insert user — is_active = true immediately
-    const [result] = await connection.query(
-      `INSERT INTO users
-        (first_name, last_name, email, password_hash, grade,faculty,
-         is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?,true, NOW(), NOW())`,
-      [first_name, last_name, email, password_hash, grade,faculty || null]
-    )
-    const newUserId = result.insertId
+    const newUser = await prisma.$transaction(async (tx) => {
 
-    // Insert user roles
-    for (const role of roles) {
-      await connection.query(
-        `INSERT INTO user_role (user_id, role, assigned_at, assigned_by)
-         VALUES (?, ?, NOW(), ?)`,
-        [newUserId, role, req.user.userId]
-      )
-    }
+      const user = await tx.users.create({
+        data: {
+          first_name,
+          last_name,
+          email,
+          password_hash,
+          grade,
+          faculty,
+          is_active: true
+        }
+      })
 
-    // Insert user modules
-    if (module_ids && module_ids.length > 0) {
-      for (const moduleId of module_ids) {
-        await connection.query(
-          `INSERT INTO user_module (user_id, academic_module_id)
-           VALUES (?, ?)`,
-          [newUserId, moduleId]
-        )
+      await tx.userRole.createMany({
+        data: roles.map(role => ({
+          user_id: user.id,
+          role,
+          assigned_at: new Date(),
+          assigned_by: req.user.userId
+        }))
+      })
+
+      if (module_ids?.length) {
+        await tx.userModule.createMany({
+          data: module_ids.map(id => ({
+            user_id: user.id,
+            academicModule_id: id
+          }))
+        })
       }
-    }
 
-    // Audit log
-    await connection.query(
-      `INSERT INTO audit_log
-        (user_id, action, target_table, target_id, description, ip_address, logged_at)
-       VALUES (?, 'USER_CREATED', 'users', ?, ?, ?, NOW())`,
-      [
-        req.user.userId,
-        newUserId,
-        `Created user ${email} with roles: ${roles.join(', ')} and modules: ${module_ids?.join(', ') || 'none'}`,
-        req.ip
-      ]
-    )
+      await tx.auditLog.create({
+        data: {
+          user_id: req.user.userId,
+          action: 'USER_CREATED',
+          target_table: 'users',
+          target_id: user.id,
+          description: `Created user ${email}`,
+          ip_address: req.ip
+        }
+      })
 
-    await connection.commit()
+      return user
+    })
 
-    // Send password email
     await sendCredentialsEmail(
       { first_name, last_name, email, roles },
       plainPassword
     )
 
     res.status(201).json({
-      message: 'User created successfully. Credentials email sent.',
+      message: 'User created successfully',
       user: {
-        id: newUserId,
-        first_name,
-        last_name,
-        email,
+        ...newUser,
         roles,
-        faculty,
-        modules: module_ids || [],
-        is_active: true
+        modules: module_ids || []
       }
     })
 
   } catch (error) {
-    await connection.rollback()
     console.error(error)
     res.status(500).json({ message: 'Server error' })
-  } finally {
-    connection.release()
   }
 }
 
@@ -142,35 +106,25 @@ exports.createUser = async (req, res) => {
 // GET /api/admin/users
 // Get all users with their roles and modules
 // ─────────────────────────────────────────
- exports.getAllUsers = async (req, res) => {
+exports.getAllUsers = async (req, res) => {
   try {
-    const [users] = await db.query(`
-      SELECT 
-        u.id,
-        u.first_name,
-        u.last_name,
-        u.email,
-        u.grade,
-        u.faculty,
-        u.is_active,
-        u.created_at,
-        GROUP_CONCAT(DISTINCT am.name) AS modules,
-        GROUP_CONCAT(DISTINCT ur.role) AS roles
-      FROM users u
-      LEFT JOIN user_module um ON um.user_id = u.id
-      LEFT JOIN academic_module am ON am.id = um.academic_module_id
-      LEFT JOIN user_role ur ON ur.user_id = u.id
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
-    `)
+    const users = await prisma.users.findMany({
+      include: {
+        userModule: {
+          include: { academicModule: true }
+        },
+        user_role_user_role_user_idTousers: true
+      },
+      orderBy: { created_at: 'desc' }
+    })
 
-    // format arrays
-    for (const user of users) {
-      user.modules = user.modules ? user.modules.split(',') : []
-      user.roles   = user.roles ? user.roles.split(',') : []
-    }
+    const formatted = users.map(u => ({
+      ...u,
+      modules: u.userModule.map(m => m.academicModule.name),
+      roles: u.user_role_user_role_user_idTousers.map(r => r.role)
+    }))
 
-    res.json({ users })
+    res.json({ users: formatted })
 
   } catch (error) {
     console.error(error)
@@ -184,37 +138,25 @@ exports.createUser = async (req, res) => {
 // ─────────────────────────────────────────
 exports.getUserById = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT 
-        u.id,
-        u.first_name,
-        u.last_name,
-        u.email,
-        u.grade,
-        u.faculty,
-        u.is_active,
-        u.created_at,
-        GROUP_CONCAT(DISTINCT am.name) AS modules,
-        GROUP_CONCAT(DISTINCT ur.role) AS roles
-      FROM users u
-      LEFT JOIN user_module um ON um.user_id = u.id
-      LEFT JOIN academic_module am ON am.id = um.academic_module_id
-      LEFT JOIN user_role ur ON ur.user_id = u.id
-      WHERE u.id = ?
-      GROUP BY u.id
-    `, [req.params.id])
+    const user = await prisma.users.findUnique({
+      where: { id: Number(req.params.id) },
+      include: {
+        userModule: { include: { academicModule: true } },
+        user_role_user_role_user_idTousers: true   // ✅ fixed: was userRole
+      }
+    })
 
-    if (rows.length === 0) {
+    if (!user) {
       return res.status(404).json({ message: 'User not found' })
     }
 
-    const user = rows[0]
-
-    // format arrays
-    user.modules = user.modules ? user.modules.split(',') : []
-    user.roles   = user.roles ? user.roles.split(',') : []
-
-    res.json({ user })
+    res.json({
+      user: {
+        ...user,
+        modules: user.userModule.map(m => m.academicModule.name),
+        roles: user.user_role_user_role_user_idTousers.map(r => r.role)  // ✅ fixed
+      }
+    })
 
   } catch (error) {
     console.error(error)
@@ -228,28 +170,34 @@ exports.getUserById = async (req, res) => {
 // ─────────────────────────────────────────
 exports.updateUser = async (req, res) => {
   try {
-    const { first_name, last_name, grade ,faculty} = req.body
-    const userId = req.params.id
-    if(!first_name && !last_name && !grade && !faculty){
-      return res.status(400).json({message:"no data"});
-    }
-    await db.query(
-      `UPDATE users SET
-        first_name = COALESCE(?, first_name),
-        last_name  = COALESCE(?, last_name),
-        grade      = COALESCE(?, grade),
-        faculty    = COALESCE(?,faculty),
-        updated_at = NOW()
-       WHERE id = ?`,
-      [first_name, last_name, grade,faculty, userId]
-    )
+    const { first_name, last_name, grade, faculty } = req.body
+    const userId = Number(req.params.id)
 
-    await db.query(
-      `INSERT INTO audit_log
-        (user_id, action, target_table, target_id, description, ip_address, logged_at)
-       VALUES (?, 'USER_UPDATED', 'users', ?, ?, ?, NOW())`,
-      [req.user.userId, userId, `Updated user ${userId}`, req.ip]
-    )
+    if (!first_name && !last_name && !grade && !faculty) {
+      return res.status(400).json({ message: "no data" })
+    }
+
+    const updated = await prisma.users.update({
+      where: { id: userId },
+      data: {
+        first_name: first_name ?? undefined,
+        last_name: last_name ?? undefined,
+        grade: grade ?? undefined,
+        faculty: faculty ?? undefined,
+        updated_at: new Date()
+      }
+    })
+
+    await prisma.auditLog.create({
+      data: {
+        user_id: req.user.userId,
+        action: 'USER_UPDATED',
+        target_table: 'users',
+        target_id: userId,
+        description: `Updated user ${userId}`,
+        ip_address: req.ip
+      }
+    })
 
     res.json({ message: 'User updated successfully' })
 
@@ -258,25 +206,33 @@ exports.updateUser = async (req, res) => {
     res.status(500).json({ message: 'Server error' })
   }
 }
+
 // ─────────────────────────────────────────
 // DELETE /api/admin/users/:id
 // Deactivate (soft delete — never hard delete)
 // ─────────────────────────────────────────
 exports.deactivateUser = async (req, res) => {
   try {
-    const userId = req.params.id
+    const userId = Number(req.params.id)
 
-    await db.query(
-      'UPDATE users SET is_active = false, updated_at = NOW() WHERE id = ?',
-      [userId]
-    )
+    await prisma.users.update({
+      where: { id: userId },
+      data: {
+        is_active: false,
+        updated_at: new Date()
+      }
+    })
 
-    await db.query(
-      `INSERT INTO audit_log
-        (user_id, action, target_table, target_id, description, ip_address, logged_at)
-       VALUES (?, 'USER_DEACTIVATED', 'users', ?, ?, ?, NOW())`,
-      [req.user.userId, userId, `Deactivated user ${userId}`, req.ip]
-    )
+    await prisma.auditLog.create({
+      data: {
+        user_id: req.user.userId,
+        action: 'USER_DEACTIVATED',
+        target_table: 'users',
+        target_id: userId,
+        description: `Deactivated user ${userId}`,
+        ip_address: req.ip
+      }
+    })
 
     res.json({ message: 'User deactivated successfully' })
 
@@ -292,75 +248,52 @@ exports.deactivateUser = async (req, res) => {
 // Hard delete but u cant delete admin users
 // ─────────────────────────────────────────
 exports.hardDeleteUser = async (req, res) => {
-  const connection = await db.getConnection();
   try {
-    const userId = req.params.id;
-    const currentAdminId = req.user.userId; // from JWT middleware
+    const userId = Number(req.params.id)
+    const currentAdminId = req.user.userId
 
-    // 1. Check if target user exists and get their roles
-    const [users] = await connection.query(
-      `SELECT u.id, u.email,
-        GROUP_CONCAT(ur.role) as roles
-       FROM users u
-       LEFT JOIN user_role ur ON u.id = ur.user_id
-       WHERE u.id = ?
-       GROUP BY u.id`,
-      [userId]
-    );
+    const user = await prisma.users.findUnique({
+      where: { id: userId },
+      include: { user_role_user_role_user_idTousers: true }
+    })
 
-    if (users.length === 0) {
-      return res.status(404).json({ message: 'User not found' });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
     }
 
-    const targetUser = users[0];
-    const targetRoles = targetUser.roles ? targetUser.roles.split(',') : [];
+    const roles = user.user_role_user_role_user_idTousers.map(r => r.role)  // ✅ fixed
 
-    // 2. Prevent deletion of any user with role 'admin'
-    if (targetRoles.includes('admin')) {
-      return res.status(403).json({
-        message: 'Cannot delete an admin user.'
-      });
+    if (roles.includes('admin')) {
+      return res.status(403).json({ message: 'Cannot delete admin user' })
     }
 
-    // 3. Prevent self-deletion
-    if (parseInt(userId) === parseInt(currentAdminId)) {
-      return res.status(403).json({
-        message: 'You cannot delete your own account.'
-      });
+    if (userId === currentAdminId) {
+      return res.status(403).json({ message: 'Cannot delete yourself' })
     }
 
-    // 4. hard delete 
-    await connection.beginTransaction();
+    await prisma.$transaction(async (tx) => {
 
-    // Clear assigned_by references
-    await connection.query(
-      'UPDATE user_role SET assigned_by = NULL WHERE assigned_by = ?',
-      [userId]
-    );
+      await tx.userRole.deleteMany({ where: { user_id: userId } })
+      await tx.userModule.deleteMany({ where: { user_id: userId } })
 
-    // Delete child rows
-    await connection.query('DELETE FROM user_role WHERE user_id = ?', [userId]);
-    await connection.query('DELETE FROM user_module WHERE user_id = ?', [userId]);
+      await tx.users.delete({ where: { id: userId } })
 
-    // Delete user
-    await connection.query('DELETE FROM users WHERE id = ?', [userId]);
+      await tx.auditLog.create({
+        data: {
+          user_id: currentAdminId,
+          action: 'USER_HARD_DELETED',
+          target_table: 'users',
+          target_id: userId,
+          description: `Deleted user ${user.email}`,
+          ip_address: req.ip
+        }
+      })
+    })
 
-    // Log the action
-    await connection.query(
-      `INSERT INTO audit_log
-        (user_id, action, target_table, target_id, description, ip_address, logged_at)
-       VALUES (?, 'USER_HARD_DELETED', 'users', ?, ?, ?, NOW())`,
-      [currentAdminId, userId, `Permanently deleted user ${userId} (${targetUser.email})`, req.ip]
-    );
-
-    await connection.commit();
-    res.json({ message: `User ${userId} permanently deleted` });
+    res.json({ message: 'User permanently deleted' })
 
   } catch (error) {
-    if (connection) await connection.rollback();
-    console.error(error);
-    res.status(500).json({ message: 'Server error during hard delete' });
-  } finally {
-    if (connection) connection.release();
+    console.error(error)
+    res.status(500).json({ message: 'Server error during delete' })
   }
-};
+}

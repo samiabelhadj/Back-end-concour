@@ -5,18 +5,18 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
+ url      = env("DATABASE_URL")
 }
 
-model academic_module {
+model academicModule {
   id          Int           @id @default(autoincrement())
   name        String        @unique(map: "name") @db.VarChar(100)
   description String?       @db.Text
   created_at  DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
-  user_module user_module[]
+  userModule userModule[]
 }
 
-model audit_log {
+model auditLog {
   id           BigInt   @id @default(autoincrement())
   user_id      Int?
   action       String   @db.VarChar(100)
@@ -27,17 +27,17 @@ model audit_log {
   logged_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
 }
 
-model user_module {
+model userModule {
   user_id            Int
-  academic_module_id Int
-  users              users           @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_module_ibfk_1")
-  academic_module    academic_module @relation(fields: [academic_module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_module_ibfk_2")
+  academicModule_id Int
+  users              users           @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_1")
+  academicModule    academicModule @relation(fields: [academicModule_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_2")
 
-  @@id([user_id, academic_module_id])
-  @@index([academic_module_id], map: "academic_module_id")
+  @@id([user_id, academicModule_id])
+  @@index([academicModule_id], map: "academicModule_id")
 }
 
-model user_role {
+model userRole {
   id                                 Int             @id @default(autoincrement())
   user_id                            Int
   role                               user_role_role?
@@ -61,16 +61,16 @@ model users {
   created_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
   updated_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
   faculty                                String?       @db.VarChar(150)
-  user_module                            user_module[]
-  user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
-  user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
+  userModule                            userModule[]
+  user_role_user_role_user_idTousers     userRole[]   @relation("user_role_user_idTousers")
+  user_role_user_role_assigned_byTousers userRole[]   @relation("user_role_assigned_byTousers")
 
   created_competitions competition[]
-  room_supervisions    room_supervisor[]
+  room_supervisions    roomSupervisor[]
   marked_attendance    attendance[]
 }
 
-model import_logs {
+model importLogs {
   id          Int      @id @default(autoincrement())
   filename    String   @db.VarChar(255)
   total_lines Int
@@ -113,7 +113,7 @@ model competition {
   candidates candidates[]
 
   exams            exam[]
-  competitionRooms competition_room[]
+  competitionRooms competitionRoom[]
 
   
 }
@@ -176,27 +176,27 @@ model candidates {
 
   //   anonymisation_key   anonymisation_key?
   attendance      attendance[]
-  candidate_rooms candidate_room[]
+  candidateRooms candidateRoom[]
 
   competition competition? @relation(fields: [competition_id], references: [id])
 
-  examRoom    exam_room? @relation(fields: [exam_roomId], references: [id])
-  exam_roomId Int?
+  examRoom    examRoom? @relation(fields: [examRoomId], references: [id])
+  examRoomId Int?
 }
 
-model room_supervisor {
+model roomSupervisor {
   room_id       Int
   supervisor_id Int
   exam_id       Int
 
-  room       exam_room @relation(fields: [room_id], references: [id])
+  room       examRoom @relation(fields: [room_id], references: [id])
   supervisor users     @relation(fields: [supervisor_id], references: [id])
   exam       exam      @relation(fields: [exam_id], references: [id])
 
   @@id([room_id, supervisor_id, exam_id])
 }
 
-model exam_session {
+model examSession {
   id         Int      @id @default(autoincrement())
   exam_id    Int
   name       String   @db.VarChar(100)
@@ -205,7 +205,7 @@ model exam_session {
 
   exam            exam             @relation(fields: [exam_id], references: [id])
   attendance      attendance[]
-  candidate_rooms candidate_room[]
+  candidateRooms candidateRoom[]
 
   @@unique([exam_id, name])
   
@@ -224,12 +224,12 @@ model attendance {
 
   candidate   candidates   @relation(fields: [candidate_id], references: [id])
   supervisor  users        @relation(fields: [supervisor_id], references: [id])
-  session     exam_session @relation(fields: [session_id], references: [id])
-  room        exam_room?   @relation(fields: [room_id], references: [id])
+  session     examSession @relation(fields: [session_id], references: [id])
+  room        examRoom?   @relation(fields: [room_id], references: [id])
 
   @@unique([candidate_id, session_id])
 }
-model exam_room {
+model examRoom {
   id Int @id @default(autoincrement())
 
   name       String         @db.VarChar(100)
@@ -240,11 +240,11 @@ model exam_room {
   attendance attendance[]
   candidates candidates[]
 
-  room_supervisor room_supervisor[]
-  candidate_rooms candidate_room[]
+  roomSupervisor roomSupervisor[]
+  candidateRooms candidateRoom[]
 
   equipments       equipments[]
-  competitionRooms competition_room[]
+  competitionRooms competitionRoom[]
 }
 
 enum ExamRoomStatus {
@@ -261,10 +261,10 @@ model equipments {
   name        String    @db.VarChar(100)
   description String?   @db.Text
   created_at  DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
-  room        exam_room @relation(fields: [room_id], references: [id])
+  room        examRoom @relation(fields: [room_id], references: [id])
 }
 
-model candidate_room {
+model candidateRoom {
   candidate_id Int
   room_id      Int
   exam_id      Int
@@ -272,19 +272,19 @@ model candidate_room {
   place_number Int?
 
   candidate candidates @relation(fields: [candidate_id], references: [id])
-  room      exam_room  @relation(fields: [room_id], references: [id])
+  room      examRoom  @relation(fields: [room_id], references: [id])
   exam      exam       @relation(fields: [exam_id], references: [id])
-  session   exam_session? @relation(fields: [session_id], references: [id])
+  session   examSession? @relation(fields: [session_id], references: [id])
 
   @@id([candidate_id, room_id, exam_id])
 }
 
-model competition_room {
+model competitionRoom {
   competition_id  Int
   room_id         Int
   places_occupied Int         @default(0)
   competition     competition @relation(fields: [competition_id], references: [id])
-  exam_room       exam_room   @relation(fields: [room_id], references: [id])
+  examRoom       examRoom   @relation(fields: [room_id], references: [id])
 
   @@id([competition_id, room_id])
 }
@@ -299,7 +299,7 @@ model exam {
   created_at     DateTime @default(now())
 
   competition     competition       @relation(fields: [competition_id], references: [id])
-  examSessions    exam_session[]
-  candidateRooms  candidate_room[]
-  roomSupervisors room_supervisor[]
+  examSessions    examSession[]
+  candidateRooms  candidateRoom[]
+  roomSupervisors roomSupervisor[]
 }

@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken')
-const db  = require('../config/db.prisma')
+const db  = require('../config/db')
 require('dotenv').config()
 
 
