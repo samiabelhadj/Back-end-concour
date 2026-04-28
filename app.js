@@ -8,7 +8,7 @@ const supervisorRoutes = require("./src/routes/supervisor.routes");
 const app = express();
 app.use(cors()); //!change it later
 app.use(express.json());
-
+app.set('trust proxy', true);
 //Routes
 
 app.get("/", (req, res) => {

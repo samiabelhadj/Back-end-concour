@@ -86,16 +86,21 @@ exports.createUser = async (req, res) => {
       { first_name, last_name, email, roles },
       plainPassword
     )
-
-    res.status(201).json({
-      message: 'User created successfully',
-      user: {
-        ...newUser,
-        roles,
-        modules: module_ids || []
-      }
-    })
-
+res.status(201).json({
+  message: 'User created successfully. Credentials email sent.',
+  user: {
+    id: newUser.id,
+    first_name: newUser.first_name,
+    last_name: newUser.last_name,
+    email: newUser.email,
+    roles,
+    modules: module_ids || [],
+    is_active: newUser.is_active,
+    grade: newUser.grade,
+    faculty: newUser.faculty,
+    created_at: newUser.created_at
+  }
+})
   } catch (error) {
     console.error(error)
     res.status(500).json({ message: 'Server error' })
@@ -150,13 +155,19 @@ exports.getUserById = async (req, res) => {
       return res.status(404).json({ message: 'User not found' })
     }
 
-    res.json({
-      user: {
-        ...user,
-        modules: user.userModule.map(m => m.academicModule.name),
-        roles: user.user_role_user_role_user_idTousers.map(r => r.role)  // ✅ fixed
-      }
-    })
+   res.json({
+  user: {
+    id: user.id,
+    first_name: user.first_name,
+    last_name: user.last_name,
+    email: user.email,
+    grade: user.grade,
+    is_active: user.is_active,
+    created_at: user.created_at,
+    modules: user.userModule.map(m => m.academicModule.name),
+    roles: user.user_role_user_role_user_idTousers.map(r => r.role)
+  }
+})
 
   } catch (error) {
     console.error(error)
