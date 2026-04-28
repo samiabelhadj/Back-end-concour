@@ -1,24 +1,23 @@
-const db = require("../config/db");
+const prisma = require("../config/db");
 const fs = require("fs");
 const csv = require("csv-parser");
 const XLSX = require("xlsx");
 
 // ─── Generate candidate ID (e.g. ED26-001) ───────────────────────────────────
 const generateCandidateId = async () => {
-  const year = new Date().getFullYear().toString().slice(-2); // "26"
+  const year = new Date().getFullYear().toString().slice(-2);
   const prefix = `ED${year}-`;
 
-  const [rows] = await db.query(
-    `SELECT candidate_id FROM candidates 
-     WHERE candidate_id LIKE ? 
-     ORDER BY candidate_id DESC LIMIT 1`,
-    [`${prefix}%`],
-  );
+  const last = await prisma.candidates.findFirst({
+    where: {
+      candidate_id: { startsWith: prefix }
+    },
+    orderBy: { candidate_id: "desc" }
+  });
 
-  if (rows.length === 0) return `${prefix}001`;
+  if (!last) return `${prefix}001`;
 
-  const lastId = rows[0].candidate_id;
-  const lastNum = parseInt(lastId.split("-")[1], 10);
+  const lastNum = parseInt(last.candidate_id.split("-")[1], 10);
   const nextNum = String(lastNum + 1).padStart(3, "0");
   return `${prefix}${nextNum}`;
 };
@@ -26,79 +25,57 @@ const generateCandidateId = async () => {
 // ─── GET all candidates ───────────────────────────────────────────────────────
 exports.getAllCandidates = async (req, res) => {
   try {
-    const {
-      search,
-      statut,
-      diplome,
-      sheet_origine,
-      page = 1,
-      limit = 10,
-    } = req.query;
-    const offset = (page - 1) * limit;
+    const { search, statut, diplome, sheet_origine, page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
 
-    let query = "SELECT * FROM candidates WHERE 1=1";
-    const params = [];
+    const where = {};
 
     if (search) {
-      query +=
-        " AND (nom LIKE ? OR prenom LIKE ? OR candidate_id LIKE ? OR email LIKE ? OR matricule_bac LIKE ?)";
-      const s = `%${search}%`;
-      params.push(s, s, s, s, s);
-    }
-    if (statut) {
-      query += " AND statut = ?";
-      params.push(statut);
-    }
-    if (diplome) {
-      query += " AND diplome = ?";
-      params.push(diplome);
-    }
-    if (sheet_origine) {
-      query += " AND sheet_origine = ?";
-      params.push(sheet_origine);
+      where.OR = [
+        { nom: { contains: search } },
+        { prenom: { contains: search } },
+        { candidate_id: { contains: search } },
+        { email: { contains: search } },
+        { matricule_bac: { contains: search } }
+      ];
     }
 
-    // Count total
-    const countQuery =
-      `SELECT COUNT(*) as total FROM candidates WHERE 1=1` +
-      (search
-        ? ` AND (nom LIKE ? OR prenom LIKE ? OR candidate_id LIKE ? OR email LIKE ? OR matricule_bac LIKE ?)`
-        : "") +
-      (statut ? ` AND statut = ?` : "") +
-      (diplome ? ` AND diplome = ?` : "") +
-      (sheet_origine ? ` AND sheet_origine = ?` : "");
+    if (statut) where.statut = statut;
+    if (diplome) where.diplome = diplome;
+    if (sheet_origine) where.sheet_origine = sheet_origine;
 
-    const [countRows] = await db.query(countQuery, params);
+    const [candidates, total] = await Promise.all([
+      prisma.candidates.findMany({
+        where,
+        orderBy: { created_at: "desc" },
+        skip: Number(skip),
+        take: Number(limit)
+      }),
+      prisma.candidates.count({ where })
+    ]);
 
-    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
-    params.push(Number(limit), Number(offset));
-
-    const [candidates] = await db.query(query, params);
-
-    // Stats
-    const [stats] = await db.query(`
-      SELECT 
-        COUNT(*) as total,
-        SUM(statut = 'INSCRIT') as inscrits,
-        SUM(statut = 'PLACE') as places,
-        SUM(statut = 'ELIMINE') as elimines,
-        SUM(sheet_origine = 'LMD') as lmd,
-        SUM(sheet_origine = 'BAC+5') as bac5,
-        SUM(sheet_origine = 'AUTRES') as autres
-      FROM candidates
-    `);
+    const stats = {
+      total: await prisma.candidates.count(),
+      inscrits: await prisma.candidates.count({ where: { statut: "INSCRIT" } }),
+      places: await prisma.candidates.count({ where: { statut: "PLACE" } }),
+      elimines: await prisma.candidates.count({ where: { statut: "ELIMINE" } }),
+      lmd: await prisma.candidates.count({ where: { sheet_origine: "LMD" } }),
+      bac5: await prisma.candidates.count({ where: { sheet_origine: "BAC+5" } }),
+      autres: await prisma.candidates.count({ where: { sheet_origine: "AUTRES" } }),
+    };
 
     res.json({
       success: true,
       data: candidates,
-      stats: stats[0],
+      stats,
       pagination: {
-        total: countRows[0].total,
+        total,
         page: Number(page),
         limit: Number(limit),
-        totalPages: Math.ceil(countRows[0].total / limit),
-      },
+        totalPages: Math.ceil(total / limit)
+      }
     });
+
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -107,16 +84,21 @@ exports.getAllCandidates = async (req, res) => {
 // ─── GET one candidate ────────────────────────────────────────────────────────
 exports.getCandidateById = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      "SELECT * FROM candidates WHERE id = ? OR candidate_id = ?",
-      [req.params.id, req.params.id],
-    );
-    if (rows.length === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "Candidat non trouvé" });
+    const candidate = await prisma.candidates.findFirst({
+      where: {
+        OR: [
+          { id: Number(req.params.id) },
+          { candidate_id: req.params.id }
+        ]
+      }
+    });
 
-    res.json({ success: true, data: rows[0] });
+    if (!candidate) {
+      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
+    }
+
+    res.json({ success: true, data: candidate });
+
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -125,94 +107,34 @@ exports.getCandidateById = async (req, res) => {
 // ─── CREATE one candidate ─────────────────────────────────────────────────────
 exports.createCandidate = async (req, res) => {
   try {
-    const {
-      nom,
-      prenom,
-      email,
-      nom_ar,
-      prenom_ar,
-      date_naissance,
-      lieu_naissance,
-      telephone,
-      adresse,
-      etablissement,
-      annee_diplome,
-      type_cursus,
-      filiere,
-      specialite,
-      diplome,
-      annee_bac,
-      matricule_bac,
-      categorie_classement_master,
-      moyenne_avant_derniere_ann,
-      moyenne_derniere_annee,
-      note_memoire_master,
-      specialite_demandee_fr,
-      specialite_demandee_ar,
-      url_progres,
-      sheet_origine,
-      statut,
-    } = req.body;
+    const { nom, prenom, email, ...rest } = req.body;
 
-    if (!nom || !prenom || !email)
-      return res
-        .status(400)
-        .json({ success: false, message: "nom, prenom et email sont requis" });
+    if (!nom || !prenom || !email) {
+      return res.status(400).json({ success: false, message: "nom, prenom et email sont requis" });
+    }
 
     const candidate_id = await generateCandidateId();
 
-    await db.query(
-      `INSERT INTO candidates (
-        candidate_id, nom, prenom, email,
-        nom_ar, prenom_ar, date_naissance, lieu_naissance, telephone, adresse,
-        etablissement, annee_diplome, type_cursus, filiere, specialite, diplome,
-        annee_bac, matricule_bac,
-        categorie_classement_master, moyenne_avant_derniere_ann,
-        moyenne_derniere_annee, note_memoire_master,
-        specialite_demandee_fr, specialite_demandee_ar,
-        url_progres, sheet_origine, statut
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
+    await prisma.candidates.create({
+      data: {
         candidate_id,
         nom,
         prenom,
         email,
-        nom_ar || null,
-        prenom_ar || null,
-        date_naissance || null,
-        lieu_naissance || null,
-        telephone || null,
-        adresse || null,
-        etablissement || null,
-        annee_diplome || null,
-        type_cursus || null,
-        filiere || null,
-        specialite || null,
-        diplome || null,
-        annee_bac || null,
-        matricule_bac || null,
-        categorie_classement_master || null,
-        moyenne_avant_derniere_ann || null,
-        moyenne_derniere_annee || null,
-        note_memoire_master || null,
-        specialite_demandee_fr || null,
-        specialite_demandee_ar || null,
-        url_progres || null,
-        sheet_origine || "LMD",
-        statut || "INSCRIT",
-      ],
-    );
+        ...rest
+      }
+    });
 
     res.status(201).json({
       success: true,
-      message: "Candidat créé avec succès",
-      candidate_id,
+      message: "Candidat créé",
+      candidate_id
     });
+
   } catch (err) {
-    if (err.code === "ER_DUP_ENTRY")
-      return res
-        .status(409)
-        .json({ success: false, message: "Email déjà existant" });
+    if (err.code === "P2002") {
+      return res.status(409).json({ success: false, message: "Email déjà existant" });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -220,107 +142,42 @@ exports.createCandidate = async (req, res) => {
 // ─── UPDATE candidate ─────────────────────────────────────────────────────────
 exports.updateCandidate = async (req, res) => {
   try {
-    const {
-      nom,
-      prenom,
-      email,
-      nom_ar,
-      prenom_ar,
-      date_naissance,
-      lieu_naissance,
-      telephone,
-      adresse,
-      etablissement,
-      annee_diplome,
-      type_cursus,
-      filiere,
-      specialite,
-      diplome,
-      annee_bac,
-      matricule_bac,
-      categorie_classement_master,
-      moyenne_avant_derniere_ann,
-      moyenne_derniere_annee,
-      note_memoire_master,
-      specialite_demandee_fr,
-      specialite_demandee_ar,
-      url_progres,
-      sheet_origine,
-      statut,
-    } = req.body;
+    const id = Number(req.params.id);
 
-    const [result] = await db.query(
-      `UPDATE candidates SET
-        nom=?, prenom=?, email=?,
-        nom_ar=?, prenom_ar=?, date_naissance=?, lieu_naissance=?, telephone=?, adresse=?,
-        etablissement=?, annee_diplome=?, type_cursus=?, filiere=?, specialite=?, diplome=?,
-        annee_bac=?, matricule_bac=?,
-        categorie_classement_master=?, moyenne_avant_derniere_ann=?,
-        moyenne_derniere_annee=?, note_memoire_master=?,
-        specialite_demandee_fr=?, specialite_demandee_ar=?,
-        url_progres=?, sheet_origine=?, statut=?
-       WHERE id = ?`,
-      [
-        nom,
-        prenom,
-        email,
-        nom_ar || null,
-        prenom_ar || null,
-        date_naissance || null,
-        lieu_naissance || null,
-        telephone || null,
-        adresse || null,
-        etablissement || null,
-        annee_diplome || null,
-        type_cursus || null,
-        filiere || null,
-        specialite || null,
-        diplome || null,
-        annee_bac || null,
-        matricule_bac || null,
-        categorie_classement_master || null,
-        moyenne_avant_derniere_ann || null,
-        moyenne_derniere_annee || null,
-        note_memoire_master || null,
-        specialite_demandee_fr || null,
-        specialite_demandee_ar || null,
-        url_progres || null,
-        sheet_origine || "LMD",
-        statut,
-        req.params.id,
-      ],
-    );
-
-    if (result.affectedRows === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "Candidat non trouvé" });
+    await prisma.candidates.update({
+      where: { id },
+      data: req.body
+    });
 
     res.json({ success: true, message: "Candidat mis à jour" });
+
   } catch (err) {
+    if (err.code === "P2025") {
+      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // ─── DELETE candidate ─────────────────────────────────────────────────────────
 exports.deleteCandidate = async (req, res) => {
   try {
-    const [result] = await db.query("DELETE FROM candidates WHERE id = ?", [
-      req.params.id,
-    ]);
-
-    if (result.affectedRows === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "Candidat non trouvé" });
+    await prisma.candidates.delete({
+      where: { id: Number(req.params.id) }
+    });
 
     res.json({ success: true, message: "Candidat supprimé" });
+
   } catch (err) {
+    if (err.code === "P2025") {
+      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
 // ─── IMPORT CSV or Excel ──────────────────────────────────────────────────────
+
+
 exports.importCandidates = async (req, res) => {
   if (!req.file)
     return res
@@ -332,6 +189,7 @@ exports.importCandidates = async (req, res) => {
   const candidates = [];
 
   try {
+    // ─── READ FILE ─────────────────────────
     if (ext === "csv") {
       await new Promise((resolve, reject) => {
         fs.createReadStream(filePath)
@@ -360,6 +218,7 @@ exports.importCandidates = async (req, res) => {
         .json({ success: false, message: "Le fichier est vide" });
     }
 
+    // ─── PREVIEW ───────────────────────────
     if (req.query.preview === "true") {
       fs.unlinkSync(filePath);
       return res.json({
@@ -374,45 +233,13 @@ exports.importCandidates = async (req, res) => {
     let errors = 0;
     const errorDetails = [];
 
+    // ─── LOOP INSERT ───────────────────────
     for (const row of candidates) {
       try {
         const nom = row.nom || row.Nom || row.NOM || "";
         const prenom =
           row.prenom || row.Prenom || row.Prénom || row.PRENOM || "";
         const email = row.email || row.Email || row.EMAIL || "";
-        const nom_ar = row.nom_ar || row.Nom_ar || null;
-        const prenom_ar = row.prenom_ar || row.Prenom_ar || null;
-        const date_naissance = row.date_naissance || null;
-        const lieu_naissance = row.lieu_naissance || null;
-        const telephone = row.telephone || row.Telephone || null;
-        const adresse = row.adresse || row.Adresse || null;
-        const etablissement = row.etablissement || row.Etablissement || null;
-        const annee_diplome = row.annee_diplome
-          ? parseInt(row.annee_diplome)
-          : null;
-        const type_cursus = row.type_cursus || null;
-        const filiere = row.filiere || row.Filiere || null;
-        const specialite =
-          row.specialite || row.Specialite || row.Spécialité || null;
-        const diplome = row.diplome || row.Diplome || row.Diplôme || null;
-        const annee_bac = row.annee_bac || null;
-        const matricule_bac = row.matricule_bac || null;
-        const categorie_classement_master =
-          row.categorie_classement_master || null;
-        const moyenne_avant_derniere_ann = row.moyenne_avant_derniere_ann
-          ? parseFloat(row.moyenne_avant_derniere_ann)
-          : null;
-        const moyenne_derniere_annee = row.moyenne_derniere_annee
-          ? parseFloat(row.moyenne_derniere_annee)
-          : null;
-        const note_memoire_master = row.note_memoire_master
-          ? parseFloat(row.note_memoire_master)
-          : null;
-        const specialite_demandee_fr = row.specialite_demandee_fr || null;
-        const specialite_demandee_ar = row.specialite_demandee_ar || null;
-        const url_progres = row.url_progres || null;
-        const sheet_origine = row.sheet_origine || "LMD";
-        const statut = row.statut || row.Statut || "INSCRIT";
 
         if (!nom || !prenom || !email) {
           errors++;
@@ -423,64 +250,60 @@ exports.importCandidates = async (req, res) => {
           continue;
         }
 
-        const candidate_id = await generateCandidateId();
+        const data = {
+          candidate_id: await generateCandidateId(),
 
-        await db.query(
-          `INSERT INTO candidates (
-            candidate_id, nom, prenom, email,
-            nom_ar, prenom_ar, date_naissance, lieu_naissance, telephone, adresse,
-            etablissement, annee_diplome, type_cursus, filiere, specialite, diplome,
-            annee_bac, matricule_bac,
-            categorie_classement_master, moyenne_avant_derniere_ann,
-            moyenne_derniere_annee, note_memoire_master,
-            specialite_demandee_fr, specialite_demandee_ar,
-            url_progres, sheet_origine, statut
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE
-            nom=VALUES(nom), prenom=VALUES(prenom),
-            nom_ar=VALUES(nom_ar), prenom_ar=VALUES(prenom_ar),
-            telephone=VALUES(telephone), adresse=VALUES(adresse),
-            etablissement=VALUES(etablissement), annee_diplome=VALUES(annee_diplome),
-            type_cursus=VALUES(type_cursus), filiere=VALUES(filiere),
-            specialite=VALUES(specialite), diplome=VALUES(diplome),
-            annee_bac=VALUES(annee_bac), matricule_bac=VALUES(matricule_bac),
-            categorie_classement_master=VALUES(categorie_classement_master),
-            moyenne_avant_derniere_ann=VALUES(moyenne_avant_derniere_ann),
-            moyenne_derniere_annee=VALUES(moyenne_derniere_annee),
-            note_memoire_master=VALUES(note_memoire_master),
-            specialite_demandee_fr=VALUES(specialite_demandee_fr),
-            specialite_demandee_ar=VALUES(specialite_demandee_ar),
-            url_progres=VALUES(url_progres), sheet_origine=VALUES(sheet_origine)`,
-          [
-            candidate_id,
-            nom,
-            prenom,
-            email,
-            nom_ar,
-            prenom_ar,
-            date_naissance,
-            lieu_naissance,
-            telephone,
-            adresse,
-            etablissement,
-            annee_diplome,
-            type_cursus,
-            filiere,
-            specialite,
-            diplome,
-            annee_bac,
-            matricule_bac,
-            categorie_classement_master,
-            moyenne_avant_derniere_ann,
-            moyenne_derniere_annee,
-            note_memoire_master,
-            specialite_demandee_fr,
-            specialite_demandee_ar,
-            url_progres,
-            sheet_origine,
-            statut,
-          ],
-        );
+          nom,
+          prenom,
+          email,
+
+          nom_ar: row.nom_ar || row.Nom_ar || null,
+          prenom_ar: row.prenom_ar || row.Prenom_ar || null,
+          date_naissance: row.date_naissance || null,
+          lieu_naissance: row.lieu_naissance || null,
+          telephone: row.telephone || row.Telephone || null,
+          adresse: row.adresse || row.Adresse || null,
+
+          etablissement: row.etablissement || row.Etablissement || null,
+          annee_diplome: row.annee_diplome
+            ? parseInt(row.annee_diplome)
+            : null,
+          type_cursus: row.type_cursus || null,
+          filiere: row.filiere || row.Filiere || null,
+          specialite:
+            row.specialite || row.Specialite || row.Spécialité || null,
+          diplome: row.diplome || row.Diplome || row.Diplôme || null,
+
+          annee_bac: row.annee_bac || null,
+          matricule_bac: row.matricule_bac || null,
+
+          categorie_classement_master:
+            row.categorie_classement_master || null,
+          moyenne_avant_derniere_ann: row.moyenne_avant_derniere_ann
+            ? parseFloat(row.moyenne_avant_derniere_ann)
+            : null,
+          moyenne_derniere_annee: row.moyenne_derniere_annee
+            ? parseFloat(row.moyenne_derniere_annee)
+            : null,
+          note_memoire_master: row.note_memoire_master
+            ? parseFloat(row.note_memoire_master)
+            : null,
+
+          specialite_demandee_fr: row.specialite_demandee_fr || null,
+          specialite_demandee_ar: row.specialite_demandee_ar || null,
+
+          url_progres: row.url_progres || null,
+          sheet_origine: row.sheet_origine || "LMD",
+          statut: row.statut || row.Statut || "INSCRIT",
+        };
+
+        // UPSERT (replace ON DUPLICATE KEY)
+        await prisma.candidates.upsert({
+          where: { email: data.email }, // assuming email unique
+          update: data,
+          create: data,
+        });
+
         imported++;
       } catch (e) {
         errors++;
@@ -488,49 +311,47 @@ exports.importCandidates = async (req, res) => {
       }
     }
 
-    await db.query(
-      `INSERT INTO import_logs (filename, total_lines, imported, errors, imported_by) VALUES (?, ?, ?, ?, ?)`,
-      [
-        req.file.originalname,
-        candidates.length,
+    // ─── LOG IMPORT ────────────────────────
+    await prisma.importLogs.create({
+      data: {
+        filename: req.file.originalname,
+        total_lines: candidates.length,
         imported,
         errors,
-        req.user?.id || 1,
-      ],
-    );
+        imported_by: req.user?.id || 1,
+      },
+    });
 
     fs.unlinkSync(filePath);
 
-    res.json({
+    return res.json({
       success: true,
-      message: `Import terminé`,
+      message: "Import terminé",
       total: candidates.length,
       imported,
       errors,
       errorDetails: errors > 0 ? errorDetails : undefined,
     });
+
   } catch (err) {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
 // ─── EXPORT to Excel ──────────────────────────────────────────────────────────
 exports.exportCandidates = async (req, res) => {
   try {
-    const [candidates] = await db.query(
-      `SELECT 
-        candidate_id, nom, prenom, nom_ar, prenom_ar, email,
-        date_naissance, lieu_naissance, telephone, adresse,
-        etablissement, annee_diplome, type_cursus, filiere, specialite, diplome,
-        annee_bac, matricule_bac,
-        categorie_classement_master, moyenne_avant_derniere_ann,
-        moyenne_derniere_annee, note_memoire_master,
-        specialite_demandee_fr, specialite_demandee_ar,
-        url_progres, sheet_origine, statut, created_at
-       FROM candidates`,
-    );
-
+   const candidates = await prisma.candidates.findMany({
+  select: {
+    candidate_id: true,
+    nom: true,
+    prenom: true,
+    email: true,
+    statut: true,
+    created_at: true
+  }
+});
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(candidates);
     XLSX.utils.book_append_sheet(workbook, worksheet, "Candidats");
@@ -551,18 +372,18 @@ exports.exportCandidates = async (req, res) => {
 // ─── GET Stats ────────────────────────────────────────────────────────────────
 exports.getStats = async (req, res) => {
   try {
-    const [stats] = await db.query(`
-      SELECT 
-        COUNT(*) as total,
-        SUM(statut = 'INSCRIT') as inscrits,
-        SUM(statut = 'PLACE') as places_en_salle,
-        SUM(statut = 'ELIMINE') as elimines,
-        SUM(sheet_origine = 'LMD') as lmd,
-        SUM(sheet_origine = 'BAC+5') as bac5,
-        SUM(sheet_origine = 'AUTRES') as autres
-      FROM candidates
-    `);
-    res.json({ success: true, data: stats[0] });
+    const data = {
+      total: await prisma.candidates.count(),
+      inscrits: await prisma.candidates.count({ where: { statut: "INSCRIT" } }),
+      places_en_salle: await prisma.candidates.count({ where: { statut: "PLACE" } }),
+      elimines: await prisma.candidates.count({ where: { statut: "ELIMINE" } }),
+      lmd: await prisma.candidates.count({ where: { sheet_origine: "LMD" } }),
+      bac5: await prisma.candidates.count({ where: { sheet_origine: "BAC+5" } }),
+      autres: await prisma.candidates.count({ where: { sheet_origine: "AUTRES" } }),
+    };
+
+    res.json({ success: true, data });
+
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -1,22 +1,22 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
+
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
+ url      = env("DATABASE_URL")
 }
 
-model academic_module {
+model academicModule {
   id          Int           @id @default(autoincrement())
   name        String        @unique(map: "name") @db.VarChar(100)
   description String?       @db.Text
   created_at  DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
-  user_module user_module[]
+  userModule userModule[]
 }
 
-model audit_log {
+model auditLog {
   id           BigInt   @id @default(autoincrement())
   user_id      Int?
   action       String   @db.VarChar(100)
@@ -27,17 +27,17 @@ model audit_log {
   logged_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
 }
 
-model user_module {
+model userModule {
   user_id            Int
-  academic_module_id Int
-  users              users           @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_module_ibfk_1")
-  academic_module    academic_module @relation(fields: [academic_module_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_module_ibfk_2")
+  academicModule_id Int
+  users              users           @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_1")
+  academicModule    academicModule @relation(fields: [academicModule_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_2")
 
-  @@id([user_id, academic_module_id])
-  @@index([academic_module_id], map: "academic_module_id")
+  @@id([user_id, academicModule_id])
+  @@index([academicModule_id], map: "academicModule_id")
 }
 
-model user_role {
+model userRole {
   id                                 Int             @id @default(autoincrement())
   user_id                            Int
   role                               user_role_role?
@@ -61,16 +61,16 @@ model users {
   created_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
   updated_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
   faculty                                String?       @db.VarChar(150)
-  user_module                            user_module[]
-  user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
-  user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
+  userModule                            userModule[]
+  user_role_user_role_user_idTousers     userRole[]   @relation("user_role_user_idTousers")
+  user_role_user_role_assigned_byTousers userRole[]   @relation("user_role_assigned_byTousers")
 
   created_competitions competition[]
-  room_supervisions    room_supervisor[]
+  room_supervisions    roomSupervisor[]
   marked_attendance    attendance[]
 }
 
-model import_logs {
+model importLogs {
   id          Int      @id @default(autoincrement())
   filename    String   @db.VarChar(255)
   total_lines Int
@@ -109,13 +109,21 @@ model competition {
   created_by            Int
   created_at            DateTime    @default(now())
 
+<<<<<<< HEAD
   creator          users              @relation(fields: [created_by], references: [id])
   candidates       candidates[]
   examSessions     exam_session[]
   competitionRooms competition_room[]
    phases           phases[]    
+=======
+  creator    users        @relation(fields: [created_by], references: [id])
+  candidates candidates[]
+>>>>>>> 12d827c2499e4969cb2099a0b4dc923dce6d00f8
 
-  @@index([created_by], map: "created_by") //add index for created_by to optimize queries filtering by creator
+  exams            exam[]
+  competitionRooms competitionRoom[]
+
+  
 }
 
 enum Affectation {
@@ -176,59 +184,60 @@ model candidates {
 
   //   anonymisation_key   anonymisation_key?
   attendance      attendance[]
-  candidate_rooms candidate_room[]
+  candidateRooms candidateRoom[]
 
   competition competition? @relation(fields: [competition_id], references: [id])
 
-  examRoom    exam_room? @relation(fields: [exam_roomId], references: [id])
-  exam_roomId Int?
+  examRoom    examRoom? @relation(fields: [examRoomId], references: [id])
+  examRoomId Int?
 }
 
-model room_supervisor {
+model roomSupervisor {
   room_id       Int
   supervisor_id Int
-  exam_room     exam_room @relation(fields: [room_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "room_supervisor_ibfk_1")
-  users         users     @relation(fields: [supervisor_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "room_supervisor_ibfk_2")
+  exam_id       Int
 
-  @@id([room_id, supervisor_id])
-  @@index([supervisor_id], map: "supervisor_id")
+  room       examRoom @relation(fields: [room_id], references: [id])
+  supervisor users     @relation(fields: [supervisor_id], references: [id])
+  exam       exam      @relation(fields: [exam_id], references: [id])
+
+  @@id([room_id, supervisor_id, exam_id])
 }
 
-model exam_session {
-  id             Int      @id @default(autoincrement())
-  competition_id Int
-  name           String   @db.VarChar(100)
-  start_time     DateTime
-  end_time       DateTime
+model examSession {
+  id         Int      @id @default(autoincrement())
+  exam_id    Int
+  name       String   @db.VarChar(100)
+  start_time DateTime
+  end_time   DateTime
 
-  competition     competition      @relation(fields: [competition_id], references: [id])
+  exam            exam             @relation(fields: [exam_id], references: [id])
   attendance      attendance[]
-  candidate_rooms candidate_room[]
+  candidateRooms candidateRoom[]
 
-  @@unique([competition_id, name])
-  @@index([competition_id])
+  @@unique([exam_id, name])
+  
 }
 
 model attendance {
   id            Int @id @default(autoincrement())
   candidate_id  Int
-  room_id       Int
   supervisor_id Int
   session_id    Int
+  room_id       Int?
 
   is_present  Boolean  @default(false)
-  remarks     String?  @db.Text
+  remarks     String?
   recorded_at DateTime @default(now())
 
-  candidate  candidates   @relation(fields: [candidate_id], references: [id])
-  exam_room  exam_room    @relation(fields: [room_id], references: [id])
-  supervisor users        @relation(fields: [supervisor_id], references: [id])
-  session    exam_session @relation(fields: [session_id], references: [id])
+  candidate   candidates   @relation(fields: [candidate_id], references: [id])
+  supervisor  users        @relation(fields: [supervisor_id], references: [id])
+  session     examSession @relation(fields: [session_id], references: [id])
+  room        examRoom?   @relation(fields: [room_id], references: [id])
 
   @@unique([candidate_id, session_id])
 }
-
-model exam_room {
+model examRoom {
   id Int @id @default(autoincrement())
 
   name       String         @db.VarChar(100)
@@ -239,11 +248,11 @@ model exam_room {
   attendance attendance[]
   candidates candidates[]
 
-  room_supervisor room_supervisor[]
-  candidate_rooms candidate_room[]
+  roomSupervisor roomSupervisor[]
+  candidateRooms candidateRoom[]
 
   equipments       equipments[]
-  competitionRooms competition_room[]
+  competitionRooms competitionRoom[]
 }
 
 enum ExamRoomStatus {
@@ -260,32 +269,34 @@ model equipments {
   name        String    @db.VarChar(100)
   description String?   @db.Text
   created_at  DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
-  room        exam_room @relation(fields: [room_id], references: [id])
+  room        examRoom @relation(fields: [room_id], references: [id])
 }
 
-model candidate_room {
+model candidateRoom {
   candidate_id Int
   room_id      Int
-  exam_id      Int // which exam requires this room
+  exam_id      Int
+  session_id   Int?
   place_number Int?
 
-  candidate      candidates    @relation(fields: [candidate_id], references: [id])
-  room           exam_room     @relation(fields: [room_id], references: [id])
-  examSession    exam_session? @relation(fields: [exam_sessionId], references: [id])
-  exam_sessionId Int?
+  candidate candidates @relation(fields: [candidate_id], references: [id])
+  room      examRoom  @relation(fields: [room_id], references: [id])
+  exam      exam       @relation(fields: [exam_id], references: [id])
+  session   examSession? @relation(fields: [session_id], references: [id])
 
   @@id([candidate_id, room_id, exam_id])
 }
 
-model competition_room {
+model competitionRoom {
   competition_id  Int
   room_id         Int
   places_occupied Int         @default(0)
   competition     competition @relation(fields: [competition_id], references: [id])
-  exam_room       exam_room   @relation(fields: [room_id], references: [id])
+  examRoom       examRoom   @relation(fields: [room_id], references: [id])
 
   @@id([competition_id, room_id])
 }
+<<<<<<< HEAD
 model phases {
   id          Int           @id @default(autoincrement())
   competition_id Int
@@ -311,3 +322,20 @@ enum phases_status {
   in_progress
   closed
 }
+=======
+
+model exam {
+  id             Int      @id @default(autoincrement())
+  competition_id Int
+  name           String   @db.VarChar(200) // "Algorithms", "AI", "English"
+  description    String?  @db.Text
+  coefficient    Float? // weight of this exam in final score
+  duration       Int? // duration in minutes
+  created_at     DateTime @default(now())
+
+  competition     competition       @relation(fields: [competition_id], references: [id])
+  examSessions    examSession[]
+  candidateRooms  candidateRoom[]
+  roomSupervisors roomSupervisor[]
+}
+>>>>>>> 12d827c2499e4969cb2099a0b4dc923dce6d00f8
