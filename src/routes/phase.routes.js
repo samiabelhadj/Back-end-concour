@@ -1,5 +1,6 @@
 const router = require('express').Router()
-const { authenticate, requireRole } = require('../middleware/auth.middleware')
+const phaseController = require('../controllers/phase.controller');
+const { verifyToken, requireRole } = require('../middleware/auth.middleware')
 const {
   createPhase,
   getAllPhases,
@@ -10,7 +11,7 @@ const {
 } = require('../controllers/phase.controller')
 
 // Toutes les routes nécessitent un token JWT valide
-router.use(authenticate)
+router.use(verifyToken)
 
 // ┌─────────────────────────────────────────────────────────────────────────┐
 // │  ADMIN seulement                                                        │

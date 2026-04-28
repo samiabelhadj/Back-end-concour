@@ -51,71 +51,23 @@ model user_role {
 }
 
 model users {
-  id                                     Int             @id @default(autoincrement())
-  first_name                             String          @db.VarChar(80)
-  last_name                              String          @db.VarChar(80)
-  email                                  String          @unique(map: "email") @db.VarChar(150)
-  password_hash                          String          @db.VarChar(255)
+  id                                     Int           @id @default(autoincrement())
+  first_name                             String        @db.VarChar(80)
+  last_name                              String        @db.VarChar(80)
+  email                                  String        @unique(map: "email") @db.VarChar(150)
+  password_hash                          String        @db.VarChar(255)
   grade                                  users_grade?
-  is_active                              Boolean         @default(false)
-  created_at                             DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
-  updated_at                             DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
-  faculty                                String?         @db.VarChar(150)
-  role                                   user_role_role  @default(coordinator)
+  is_active                              Boolean       @default(false)
+  created_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  faculty                                String?       @db.VarChar(150)
   user_module                            user_module[]
   user_role_user_role_user_idTousers     user_role[]   @relation("user_role_user_idTousers")
   user_role_user_role_assigned_byTousers user_role[]   @relation("user_role_assigned_byTousers")
-}
 
-model candidates {
-  id                          Int       @id @default(autoincrement())
-  candidate_id                String?   @unique @db.VarChar(20)
-
-  // ── Identifiants ────────────────────────────────────────────────────────────
-  annee_bac                   String?
-  matricule_bac               String?
-
-  // ── Informations personnelles ───────────────────────────────────────────────
-  nom                         String    @db.VarChar(80)
-  prenom                      String    @db.VarChar(80)
-  nom_ar                      String?   @db.VarChar(80)
-  prenom_ar                   String?   @db.VarChar(80)
-  date_naissance              DateTime?
-  lieu_naissance              String?   @db.VarChar(100)
-  telephone                   String?   @db.VarChar(20)
-  email                       String    @unique @db.VarChar(150)
-  adresse                     String?   @db.VarChar(255)
-
-  // ── Diplôme et cursus ───────────────────────────────────────────────────────
-  etablissement               String?   @db.VarChar(200)
-  annee_diplome               Int?
-  type_cursus                 String?   @db.VarChar(30)
-  filiere                     String?   @db.VarChar(150)
-  specialite                  String?   @db.VarChar(150)
-  diplome                     String?   @db.VarChar(100)
-
-  // ── Moyennes (BAC+5 uniquement) ─────────────────────────────────────────────
-  categorie_classement_master String?   @db.VarChar(100)
-  moyenne_avant_derniere_ann  Float?
-  moyenne_derniere_annee      Float?
-  note_memoire_master         Float?
-
-  // ── Spécialité demandée ─────────────────────────────────────────────────────
-  specialite_demandee_fr      String?   @db.VarChar(200)
-  specialite_demandee_ar      String?   @db.VarChar(200)
-
-  // ── Lien progres.mesrs.dz ───────────────────────────────────────────────────
-  url_progres                 String?   @db.VarChar(255)
-
-  // ── Catégorie de candidature ────────────────────────────────────────────────
-  sheet_origine               String    @default("LMD") @db.VarChar(20)
-
-  // ── Statut ──────────────────────────────────────────────────────────────────
-  statut                      String    @default("INSCRIT") @db.VarChar(20)
-
-  // ── Timestamps ──────────────────────────────────────────────────────────────
-  created_at                  DateTime  @default(now())
-  updated_at                  DateTime? @updatedAt
+  created_competitions competition[]
+  room_supervisions    room_supervisor[]
+  marked_attendance    attendance[]
 }
 
 model import_logs {
@@ -161,6 +113,7 @@ model competition {
   candidates       candidates[]
   examSessions     exam_session[]
   competitionRooms competition_room[]
+   phases           phases[]    
 
   @@index([created_by], map: "created_by") //add index for created_by to optimize queries filtering by creator
 }
@@ -333,32 +286,28 @@ model competition_room {
 
   @@id([competition_id, room_id])
 }
+model phases {
+  id          Int           @id @default(autoincrement())
+  competition_id Int
+  name        String        @db.VarChar(100)
+  description String?       @db.Text
+  phase_order Int
+  start_date  DateTime?
+  end_date    DateTime?
+  status      phases_status @default(pending)
+  pv_file     String?       @db.VarChar(255)
+  created_at  DateTime      @default(now())
+  updated_at  DateTime?     @updatedAt
 
-enum PhaseStatus {
-  PENDING
-  IN_PROGRESS
-  CLOSED
+  competition competition @relation(fields: [competition_id], references: [id])
+
+  @@unique([competition_id, phase_order])
+  @@unique([competition_id, name])
+  @@index([competition_id])
 }
 
-// ─── MODELS ──────────────────────────────────────────────────────────────────
-
-model Phase {
-  id          Int         @id @default(autoincrement())
-  name        String
-  description String?
-  phaseOrder  Int         @map("phase_order")
-  startDate   DateTime?   @map("start_date")
-  endDate     DateTime?   @map("end_date")
-  status      PhaseStatus @default(PENDING)
-
-  createdById Int         @map("created_by_id") // ← Admin qui crée
-  closedById  Int?        @map("closed_by_id")  // ← Coordinator qui ferme
-  closedAt    DateTime?   @map("closed_at")
-  createdAt   DateTime    @default(now())        @map("created_at")
-  updatedAt   DateTime    @updatedAt             @map("updated_at")
-
-  createdBy   users       @relation("PhaseCreator", fields: [createdById], references: [id])
-  closedBy    users?      @relation("PhaseCloser",  fields: [closedById],  references: [id])
-
-  @@map("phases")
+enum phases_status {
+  pending
+  in_progress
+  closed
 }
