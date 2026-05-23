@@ -203,7 +203,7 @@ exports.markAttendance = async (req, res) => {
         }
       });
 
-      await tx.audit_log.create({
+      await tx.auditLog.create({
         data: {
           user_id: supervisorId,
           action: 'MARK_ATTENDANCE',
