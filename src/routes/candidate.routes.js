@@ -79,5 +79,9 @@ router.get(
   "/:id",
   candidateController.getCandidateById
 );
-
+// Supprimer tous les candidats d'une compétition
+router.delete(
+  "/competition/:competition_id",
+  candidateController.deleteCandidatesByCompetition
+);
 module.exports = router;

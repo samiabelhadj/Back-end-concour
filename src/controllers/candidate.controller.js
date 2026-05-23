@@ -330,3 +330,64 @@ exports.getCandidateById = async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 };
+exports.deleteCandidatesByCompetition = async (req, res) => {
+  try {
+    const competition_id = parseInt(req.params.competition_id, 10);
+
+    const competition = await prisma.competition.findUnique({ where: { id: competition_id } });
+    if (!competition)
+      return res.status(404).json({ success: false, message: `Competition #${competition_id} introuvable` });
+
+    // Récupérer les IDs des candidats
+    const candidates = await prisma.candidates.findMany({
+      where:  { competition_id },
+      select: { id: true },
+    });
+    const ids = candidates.map((c) => c.id);
+
+    if (ids.length === 0)
+      return res.json({ success: true, message: "Aucun candidat à supprimer", deleted: 0 });
+
+    await prisma.$transaction(async (tx) => {
+      // 1 — supprimer attendance (lié à candidates)
+      await tx.attendance.deleteMany({
+        where: { candidate_id: { in: ids } },
+      });
+
+      // 2 — supprimer candidateRoom (lié à candidates)
+      await tx.candidateRoom.deleteMany({
+        where: { candidate_id: { in: ids } },
+      });
+
+      // 3 — retirer examRoomId des candidats (FK vers examRoom)
+      await tx.candidates.updateMany({
+        where: { competition_id },
+        data:  { examRoomId: null },
+      });
+
+      // 4 — supprimer les candidats
+      await tx.candidates.deleteMany({
+        where: { competition_id },
+      });
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        user_id:      req.user.userId,
+        action:       "CANDIDATES_DELETED",
+        target_table: "candidates",
+        target_id:    competition_id,
+        description:  `Admin#${req.user.userId} a supprimé ${ids.length} candidats de competition#${competition_id}`,
+        ip_address:   req.ip,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: `${ids.length} candidats supprimés. Vous pouvez maintenant réimporter.`,
+      deleted: ids.length,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
