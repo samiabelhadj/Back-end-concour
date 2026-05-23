@@ -1,0 +1,305 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "mysql"
+ url      = env("DATABASE_URL")
+}
+
+model academicModule {
+  id          Int           @id @default(autoincrement())
+  name        String        @unique(map: "name") @db.VarChar(100)
+  description String?       @db.Text
+  created_at  DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  userModule userModule[]
+}
+
+model auditLog {
+  id           BigInt   @id @default(autoincrement())
+  user_id      Int?
+  action       String   @db.VarChar(100)
+  target_table String?  @db.VarChar(60)
+  target_id    Int?
+  description  String?  @db.Text
+  ip_address   String?  @db.VarChar(45)
+  logged_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
+}
+
+model userModule {
+  user_id            Int
+  academicModule_id Int
+  users              users           @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_1")
+  academicModule    academicModule @relation(fields: [academicModule_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_2")
+
+  @@id([user_id, academicModule_id])
+  @@index([academicModule_id], map: "academicModule_id")
+}
+
+model userRole {
+  id                                 Int             @id @default(autoincrement())
+  user_id                            Int
+  role                               user_role_role?
+  assigned_at                        DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
+  assigned_by                        Int
+  users_user_role_user_idTousers     users           @relation("user_role_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_role_ibfk_1")
+  users_user_role_assigned_byTousers users           @relation("user_role_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_role_ibfk_2")
+
+  @@unique([user_id, role], map: "user_role_index_0")
+  @@index([assigned_by], map: "assigned_by")
+}
+
+model users {
+  id                                     Int           @id @default(autoincrement())
+  first_name                             String        @db.VarChar(80)
+  last_name                              String        @db.VarChar(80)
+  email                                  String        @unique(map: "email") @db.VarChar(150)
+  password_hash                          String        @db.VarChar(255)
+  grade                                  users_grade?
+  is_active                              Boolean       @default(false)
+  created_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at                             DateTime      @default(dbgenerated("(now())")) @db.DateTime(0)
+  faculty                                String?       @db.VarChar(150)
+  userModule                            userModule[]
+  user_role_user_role_user_idTousers     userRole[]   @relation("user_role_user_idTousers")
+  user_role_user_role_assigned_byTousers userRole[]   @relation("user_role_assigned_byTousers")
+
+  created_competitions competition[]
+  room_supervisions    roomSupervisor[]
+  marked_attendance    attendance[]
+}
+
+model importLogs {
+  id          Int      @id @default(autoincrement())
+  filename    String   @db.VarChar(255)
+  total_lines Int
+  imported    Int
+  errors      Int
+  imported_by Int
+  created_at  DateTime @default(now())
+}
+
+enum user_role_role {
+  admin
+  professor_creator
+  corrector
+  supervisor
+  jury
+  coordinator
+  anonymat
+}
+
+enum users_grade {
+  MCB
+  MCA
+  professeur
+  IT_engineer @map("IT engineer")
+}
+
+model competition {
+  id                    Int         @id @default(autoincrement())
+  name                  String      @db.VarChar(200)
+  academic_year         String      @db.VarChar(20)
+  description           String?     @db.Text
+  max_admitted          Int?
+  waiting_list_size     Int?
+  discrepancy_threshold Decimal?    @db.Decimal(5, 2) //used to trigger a 3rd corrector.
+  affectation           Affectation @default(MANUEL)
+  created_by            Int
+  created_at            DateTime    @default(now())
+
+  creator    users        @relation(fields: [created_by], references: [id])
+  candidates candidates[]
+
+  exams            exam[]
+  competitionRooms competitionRoom[]
+
+  
+}
+
+enum Affectation {
+  MANUEL
+  AUTOMATIQUE
+}
+
+model candidates {
+  id             Int     @id @default(autoincrement())
+  candidate_id   String? @unique @db.VarChar(20)
+  competition_id Int
+
+  // ── Identifiants ────────────────────────────────────────────────────────────
+  annee_bac     String?
+  matricule_bac String?
+
+  // ── Informations personnelles ───────────────────────────────────────────────
+  nom            String    @db.VarChar(80)
+  prenom         String    @db.VarChar(80)
+  nom_ar         String?   @db.VarChar(80)
+  prenom_ar      String?   @db.VarChar(80)
+  date_naissance DateTime?
+  lieu_naissance String?   @db.VarChar(100)
+  telephone      String?   @db.VarChar(20)
+  email          String    @unique @db.VarChar(150)
+  adresse        String?   @db.VarChar(255)
+
+  // ── Diplôme et cursus ───────────────────────────────────────────────────────
+  etablissement String? @db.VarChar(200)
+  annee_diplome Int?
+  type_cursus   String? @db.VarChar(30)
+  filiere       String? @db.VarChar(150)
+  specialite    String? @db.VarChar(150)
+  diplome       String? @db.VarChar(100)
+
+  // ── Moyennes (BAC+5 uniquement) ─────────────────────────────────────────────
+  categorie_classement_master String? @db.VarChar(100)
+  moyenne_avant_derniere_ann  Float?
+  moyenne_derniere_annee      Float?
+  note_memoire_master         Float?
+
+  // ── Spécialité demandée ─────────────────────────────────────────────────────
+  specialite_demandee_fr String? @db.VarChar(200)
+  specialite_demandee_ar String? @db.VarChar(200)
+
+  // ── Lien progres.mesrs.dz ───────────────────────────────────────────────────
+  url_progres String? @db.VarChar(255)
+
+  // ── Catégorie de candidature ────────────────────────────────────────────────
+  sheet_origine String @default("LMD") @db.VarChar(20)
+
+  // ── Statut ──────────────────────────────────────────────────────────────────
+  statut String @default("INSCRIT") @db.VarChar(20)
+
+  // ── Timestamps ──────────────────────────────────────────────────────────────
+  created_at DateTime  @default(now())
+  updated_at DateTime? @updatedAt
+
+  //   anonymisation_key   anonymisation_key?
+  attendance      attendance[]
+  candidateRooms candidateRoom[]
+
+  competition competition? @relation(fields: [competition_id], references: [id])
+
+  examRoom    examRoom? @relation(fields: [examRoomId], references: [id])
+  examRoomId Int?
+}
+
+model roomSupervisor {
+  room_id       Int
+  supervisor_id Int
+  exam_id       Int
+
+  room       examRoom @relation(fields: [room_id], references: [id])
+  supervisor users     @relation(fields: [supervisor_id], references: [id])
+  exam       exam      @relation(fields: [exam_id], references: [id])
+
+  @@id([room_id, supervisor_id, exam_id])
+}
+
+model examSession {
+  id         Int      @id @default(autoincrement())
+  exam_id    Int
+  name       String   @db.VarChar(100)
+  start_time DateTime
+  end_time   DateTime
+
+  exam            exam             @relation(fields: [exam_id], references: [id])
+  attendance      attendance[]
+  candidateRooms candidateRoom[]
+
+  @@unique([exam_id, name])
+  
+}
+
+model attendance {
+  id            Int @id @default(autoincrement())
+  candidate_id  Int
+  supervisor_id Int
+  session_id    Int
+  room_id       Int?
+
+  is_present  Boolean  @default(false)
+  remarks     String?
+  recorded_at DateTime @default(now())
+
+  candidate   candidates   @relation(fields: [candidate_id], references: [id])
+  supervisor  users        @relation(fields: [supervisor_id], references: [id])
+  session     examSession @relation(fields: [session_id], references: [id])
+  room        examRoom?   @relation(fields: [room_id], references: [id])
+
+  @@unique([candidate_id, session_id])
+}
+model examRoom {
+  id Int @id @default(autoincrement())
+
+  name       String         @db.VarChar(100)
+  capacity   Int
+  block      String?        @db.VarChar(100)
+  status     ExamRoomStatus @default(AVAILABLE)
+  created_at DateTime       @default(now())
+  attendance attendance[]
+  candidates candidates[]
+
+  roomSupervisor roomSupervisor[]
+  candidateRooms candidateRoom[]
+
+  equipments       equipments[]
+  competitionRooms competitionRoom[]
+}
+
+enum ExamRoomStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  OUT_OF_SERVICE
+  CLOSED
+}
+
+model equipments {
+  id          Int       @id @default(autoincrement())
+  room_id     Int
+  name        String    @db.VarChar(100)
+  description String?   @db.Text
+  created_at  DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
+  room        examRoom @relation(fields: [room_id], references: [id])
+}
+
+model candidateRoom {
+  candidate_id Int
+  room_id      Int
+  exam_id      Int
+  session_id   Int?
+  place_number Int?
+
+  candidate candidates @relation(fields: [candidate_id], references: [id])
+  room      examRoom  @relation(fields: [room_id], references: [id])
+  exam      exam       @relation(fields: [exam_id], references: [id])
+  session   examSession? @relation(fields: [session_id], references: [id])
+
+  @@id([candidate_id, room_id, exam_id])
+}
+
+model competitionRoom {
+  competition_id  Int
+  room_id         Int
+  places_occupied Int         @default(0)
+  competition     competition @relation(fields: [competition_id], references: [id])
+  examRoom       examRoom   @relation(fields: [room_id], references: [id])
+
+  @@id([competition_id, room_id])
+}
+
+model exam {
+  id             Int      @id @default(autoincrement())
+  competition_id Int
+  name           String   @db.VarChar(200) // "Algorithms", "AI", "English"
+  description    String?  @db.Text
+  coefficient    Float? // weight of this exam in final score
+  duration       Int? // duration in minutes
+  created_at     DateTime @default(now())
+
+  competition     competition       @relation(fields: [competition_id], references: [id])
+  examSessions    examSession[]
+  candidateRooms  candidateRoom[]
+  roomSupervisors roomSupervisor[]
+}

@@ -1,390 +1,332 @@
+// controllers/candidateController.js
+
 const prisma = require("../config/db");
-const fs = require("fs");
-const csv = require("csv-parser");
-const XLSX = require("xlsx");
+const fs     = require("fs");
+const path   = require("path");
+const XLSX   = require("xlsx");
 
-// ─── Generate candidate ID (e.g. ED26-001) ───────────────────────────────────
+const MAX_FILE_SIZE_MB = 10;
+
+// ─── Nettoyer fichier temporaire ──────────────────────────────────────────────
+const cleanupFile = (filePath) => {
+  try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
+};
+
+// ─── Générer candidate_id (ex: ED26-001) ─────────────────────────────────────
 const generateCandidateId = async () => {
-  const year = new Date().getFullYear().toString().slice(-2);
+  const year   = new Date().getFullYear().toString().slice(-2);
   const prefix = `ED${year}-`;
+  const last   = await prisma.candidates.findFirst({
+    where:   { candidate_id: { startsWith: prefix } },
+    orderBy: { candidate_id: "desc" },
+  });
+  if (!last) return `${prefix}001`;
+  return `${prefix}${String(parseInt(last.candidate_id.split("-")[1], 10) + 1).padStart(3, "0")}`;
+};
 
-  const last = await prisma.candidates.findFirst({
-    where: {
-      candidate_id: { startsWith: prefix }
-    },
-    orderBy: { candidate_id: "desc" }
+// ─── Convertir une date string → DateTime valide ou null ─────────────────────
+const parseDate = (val) => {
+  if (!val) return null;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// ─── Lire toutes les feuilles du fichier Excel ────────────────────────────────
+// Structure : lignes 1-3 = titres, ligne 4 = headers, ligne 5+ = données
+// Feuilles valides : LMD, BAC+5, AUTRES
+const readExcelSheets = (filePath) => {
+  const VALID_SHEETS = ["LMD", "BAC+5", "AUTRES"];
+  const allRows = [];
+
+  const workbook = XLSX.readFile(filePath, {
+    type:      "file",
+    cellDates: true,
+    raw:       false,
+    password:  "",
   });
 
-  if (!last) return `${prefix}001`;
+  for (const sheetName of workbook.SheetNames) {
+    if (!VALID_SHEETS.includes(sheetName)) continue;
 
-  const lastNum = parseInt(last.candidate_id.split("-")[1], 10);
-  const nextNum = String(lastNum + 1).padStart(3, "0");
-  return `${prefix}${nextNum}`;
-};
-
-// ─── GET all candidates ───────────────────────────────────────────────────────
-exports.getAllCandidates = async (req, res) => {
-  try {
-    const { search, statut, diplome, sheet_origine, page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
-
-    const where = {};
-
-    if (search) {
-      where.OR = [
-        { nom: { contains: search } },
-        { prenom: { contains: search } },
-        { candidate_id: { contains: search } },
-        { email: { contains: search } },
-        { matricule_bac: { contains: search } }
-      ];
-    }
-
-    if (statut) where.statut = statut;
-    if (diplome) where.diplome = diplome;
-    if (sheet_origine) where.sheet_origine = sheet_origine;
-
-    const [candidates, total] = await Promise.all([
-      prisma.candidates.findMany({
-        where,
-        orderBy: { created_at: "desc" },
-        skip: Number(skip),
-        take: Number(limit)
-      }),
-      prisma.candidates.count({ where })
-    ]);
-
-    const stats = {
-      total: await prisma.candidates.count(),
-      inscrits: await prisma.candidates.count({ where: { statut: "INSCRIT" } }),
-      places: await prisma.candidates.count({ where: { statut: "PLACE" } }),
-      elimines: await prisma.candidates.count({ where: { statut: "ELIMINE" } }),
-      lmd: await prisma.candidates.count({ where: { sheet_origine: "LMD" } }),
-      bac5: await prisma.candidates.count({ where: { sheet_origine: "BAC+5" } }),
-      autres: await prisma.candidates.count({ where: { sheet_origine: "AUTRES" } }),
-    };
-
-    res.json({
-      success: true,
-      data: candidates,
-      stats,
-      pagination: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+    const sheet = workbook.Sheets[sheetName];
+    const rows  = XLSX.utils.sheet_to_json(sheet, {
+      defval: null,
+      range:  3, // sauter les 3 premières lignes de titre → ligne 4 = headers
     });
 
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    rows.forEach(row => allRows.push({ ...row, _sheet: sheetName }));
   }
+
+  return allRows;
 };
 
-// ─── GET one candidate ────────────────────────────────────────────────────────
-exports.getCandidateById = async (req, res) => {
-  try {
-    const candidate = await prisma.candidates.findFirst({
-      where: {
-        OR: [
-          { id: Number(req.params.id) },
-          { candidate_id: req.params.id }
-        ]
-      }
-    });
+// ─── Trouver le vrai email dans une ligne Excel ───────────────────────────────
+const findEmail = (row) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const knownKeys  = ["Mail", "Email", "E-mail", "Adresse mail", "email", "mail"];
 
-    if (!candidate) {
-      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
-    }
-
-    res.json({ success: true, data: candidate });
-
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+  for (const key of knownKeys) {
+    const val = row[key] ? String(row[key]).trim() : null;
+    if (val && emailRegex.test(val)) return val;
   }
-};
 
-// ─── CREATE one candidate ─────────────────────────────────────────────────────
-exports.createCandidate = async (req, res) => {
-  try {
-    const { nom, prenom, email, ...rest } = req.body;
-
-    if (!nom || !prenom || !email) {
-      return res.status(400).json({ success: false, message: "nom, prenom et email sont requis" });
-    }
-
-    const candidate_id = await generateCandidateId();
-
-    await prisma.candidates.create({
-      data: {
-        candidate_id,
-        nom,
-        prenom,
-        email,
-        ...rest
-      }
-    });
-
-    res.status(201).json({
-      success: true,
-      message: "Candidat créé",
-      candidate_id
-    });
-
-  } catch (err) {
-    if (err.code === "P2002") {
-      return res.status(409).json({ success: false, message: "Email déjà existant" });
-    }
-    res.status(500).json({ success: false, message: err.message });
+  // Fallback : parcourt toutes les colonnes et retourne la 1ère valeur email valide
+  for (const key of Object.keys(row)) {
+    const val = row[key] ? String(row[key]).trim() : null;
+    if (val && emailRegex.test(val)) return val;
   }
+
+  return "";
 };
 
-// ─── UPDATE candidate ─────────────────────────────────────────────────────────
-exports.updateCandidate = async (req, res) => {
-  try {
-    const id = Number(req.params.id);
+// ─── Mapper une ligne Excel → objet candidat (selon vrai schema Prisma) ───────
+const mapRow = (row, competition_id) => {
+  const clean = (v) =>
+    v !== null && v !== undefined && String(v).trim() !== "" ? String(v).trim() : null;
+  const cleanFloat = (v) => { const f = parseFloat(v); return isNaN(f) ? null : f; };
+  const cleanInt   = (v) => { const i = parseInt(v, 10); return isNaN(i) ? null : i; };
 
-    await prisma.candidates.update({
-      where: { id },
-      data: req.body
-    });
+  return {
+    competition_id,                                                          // obligatoire
 
-    res.json({ success: true, message: "Candidat mis à jour" });
+    // ── Identifiants ──────────────────────────────────────────────────────────
+    annee_bac:     clean(row["Annee de Bac"]),
+    matricule_bac: clean(row["matricule_bac"]),
 
-  } catch (err) {
-    if (err.code === "P2025") {
-      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
-    }
-    res.status(500).json({ success: false, message: err.message });
-  }
+    // ── Informations personnelles ─────────────────────────────────────────────
+    nom:            clean(row["Nom FR"])                                ?? "",
+    prenom:         clean(row["Prénom Fr"])                             ?? "",
+    nom_ar:         clean(row["Nom Ar"]),
+    prenom_ar:      clean(row["Prénom Ar"]),
+    date_naissance: parseDate(row["Date de Naissance"]),                     // DateTime
+    lieu_naissance: clean(row["Lieu Naissance"]),
+    telephone:      clean(row["Téléphone"]),
+    email:          findEmail(row) ?? "",                                 
+    adresse:        clean(row["Adresse de Résidence"]),
+
+    // ── Diplôme et cursus ─────────────────────────────────────────────────────
+    etablissement: clean(row["Etablissement (diplômé)"]),
+    annee_diplome: cleanInt(row["Année de diplôme"]),
+    type_cursus:   clean(row["Type Cursus (LMD/CLASS)"]),
+    filiere:       clean(row["Filière"]),
+    specialite:    clean(row["Spécialité diplôme (Si LMD)"]),
+    diplome:       null,                                                     // pas dans le fichier
+
+    // ── Moyennes ─────────────────────────────────────────────────────────────
+    categorie_classement_master: clean(row["catégorie de classement Master"]),
+    moyenne_avant_derniere_ann:  cleanFloat(
+      row["Moyenne générale de l\u2019avant derni\u00e8re ann\u00e9e de la formation gradu\u00e9e"]
+    ),
+    moyenne_derniere_annee: cleanFloat(
+      row["Moyenne g\u00e9n\u00e9rale de la 2eme ann\u00e9e de master ou le cas \u00e9ch\u00e9ant,\u00a0 de la derni\u00e8re ann\u00e9e de la formation gradu\u00e9e"]
+    ),
+    note_memoire_master: cleanFloat(row["Note de m\u00e9moire de master"]),
+
+    // ── Spécialité demandée ───────────────────────────────────────────────────
+    specialite_demandee_fr: clean(row["Specialit\u00e9 Demand\u00e9e (FR)"]),
+    specialite_demandee_ar: clean(row["Specialit\u00e9 Demand\u00e9e (AR)"]),
+
+    // ── URL progres ───────────────────────────────────────────────────────────
+    url_progres: clean(row[Object.keys(row).find(k => k.includes("progres") || (row[k] && String(row[k]).includes("progres.mesrs"))) ?? ""]),
+
+    // ── Catégorie et statut ───────────────────────────────────────────────────
+    sheet_origine: row._sheet ?? "LMD",
+    statut:        "INSCRIT",
+  };
 };
-// ─── DELETE candidate ─────────────────────────────────────────────────────────
-exports.deleteCandidate = async (req, res) => {
-  try {
-    await prisma.candidates.delete({
-      where: { id: Number(req.params.id) }
-    });
 
-    res.json({ success: true, message: "Candidat supprimé" });
-
-  } catch (err) {
-    if (err.code === "P2025") {
-      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
-    }
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-// ─── IMPORT CSV or Excel ──────────────────────────────────────────────────────
-
-
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/candidates/import?competition_id=1
+// Lit les 3 feuilles (LMD, BAC+5, AUTRES) et insère dans candidates
+// ─────────────────────────────────────────────────────────────────────────────
 exports.importCandidates = async (req, res) => {
-  if (!req.file)
-    return res
-      .status(400)
-      .json({ success: false, message: "Aucun fichier fourni" });
-
-  const filePath = req.file.path;
-  const ext = req.file.originalname.split(".").pop().toLowerCase();
-  const candidates = [];
-
+  const filePath = req.file?.path;
   try {
-    // ─── READ FILE ─────────────────────────
-    if (ext === "csv") {
-      await new Promise((resolve, reject) => {
-        fs.createReadStream(filePath)
-          .pipe(csv())
-          .on("data", (row) => candidates.push(row))
-          .on("end", resolve)
-          .on("error", reject);
-      });
-    } else if (ext === "xlsx" || ext === "xls") {
-      const workbook = XLSX.readFile(filePath);
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(sheet);
-      candidates.push(...data);
-    } else {
-      fs.unlinkSync(filePath);
-      return res.status(400).json({
-        success: false,
-        message: "Format non supporté. Utilisez CSV ou Excel.",
-      });
+    if (!req.file)
+      return res.status(400).json({ success: false, message: "Aucun fichier fourni" });
+
+    // ── competition_id obligatoire ────────────────────────────────────────────
+    const competition_id = parseInt(req.body.competition_id || req.query.competition_id, 10);
+    if (!competition_id || isNaN(competition_id)) {
+      cleanupFile(filePath);
+      return res.status(400).json({ success: false, message: "competition_id est obligatoire" });
     }
 
-    if (candidates.length === 0) {
-      fs.unlinkSync(filePath);
-      return res
-        .status(400)
-        .json({ success: false, message: "Le fichier est vide" });
+    // ── Vérifier que la compétition existe ────────────────────────────────────
+    const competition = await prisma.competition.findUnique({ where: { id: competition_id } });
+    if (!competition) {
+      cleanupFile(filePath);
+      return res.status(404).json({ success: false, message: `Competition #${competition_id} introuvable` });
     }
 
-    // ─── PREVIEW ───────────────────────────
-    if (req.query.preview === "true") {
-      fs.unlinkSync(filePath);
-      return res.json({
-        success: true,
-        preview: true,
-        total: candidates.length,
-        data: candidates.slice(0, 5),
-      });
+    const ext = path.extname(req.file.originalname).replace(".", "").toLowerCase();
+    if (!["xlsx", "xls"].includes(ext)) {
+      cleanupFile(filePath);
+      return res.status(400).json({ success: false, message: "Format non supporté. Utilisez .xlsx ou .xls" });
     }
 
-    let imported = 0;
-    let errors = 0;
+    if (req.file.size / (1024 * 1024) > MAX_FILE_SIZE_MB) {
+      cleanupFile(filePath);
+      return res.status(400).json({ success: false, message: `Fichier trop volumineux (max ${MAX_FILE_SIZE_MB} Mo)` });
+    }
+
+    // ── Lire toutes les feuilles ──────────────────────────────────────────────
+    let rows;
+    try { rows = readExcelSheets(filePath); }
+    catch (err) {
+      cleanupFile(filePath);
+      return res.status(422).json({ success: false, message: `Erreur lecture fichier : ${err.message}` });
+    }
+
+    if (!rows?.length) {
+      cleanupFile(filePath);
+      return res.status(400).json({ success: false, message: "Aucune donnée trouvée dans les feuilles LMD, BAC+5, AUTRES" });
+    }
+
+    let inserted     = 0;
+    let updated      = 0;
+    let errors       = 0;
     const errorDetails = [];
 
-    // ─── LOOP INSERT ───────────────────────
-    for (const row of candidates) {
+    for (const row of rows) {
       try {
-        const nom = row.nom || row.Nom || row.NOM || "";
-        const prenom =
-          row.prenom || row.Prenom || row.Prénom || row.PRENOM || "";
-        const email = row.email || row.Email || row.EMAIL || "";
+        const mapped = mapRow(row, competition_id);
 
-        if (!nom || !prenom || !email) {
+        // Validation champs obligatoires
+        if (!mapped.nom || !mapped.prenom ) {
           errors++;
           errorDetails.push({
-            row,
-            reason: "Champs manquants (nom, prenom, email)",
+            reason: `Champs manquants — nom:"${mapped.nom}" prenom:"${mapped.prenom}"`,
           });
           continue;
         }
 
-        const data = {
-          candidate_id: await generateCandidateId(),
+        // Validation format email
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.email)) {
+          errors++;
+          errorDetails.push({ reason: `Email invalide : ${mapped.email}` });
+          continue;
+        }
+        
+let existing = null;
 
-          nom,
-          prenom,
-          email,
+if (mapped.email) {
+  existing = await prisma.candidates.findUnique({ where: { email: mapped.email } });
+}
+if (!existing && mapped.matricule_bac) {
+  existing = await prisma.candidates.findFirst({ where: { matricule_bac: mapped.matricule_bac } });
+}
 
-          nom_ar: row.nom_ar || row.Nom_ar || null,
-          prenom_ar: row.prenom_ar || row.Prenom_ar || null,
-          date_naissance: row.date_naissance || null,
-          lieu_naissance: row.lieu_naissance || null,
-          telephone: row.telephone || row.Telephone || null,
-          adresse: row.adresse || row.Adresse || null,
+if (existing) {
+  await prisma.candidates.update({ where: { id: existing.id }, data: mapped });
+  updated++;
+} else {
+  const candidate_id = await generateCandidateId();
+  await prisma.candidates.create({ data: { candidate_id, ...mapped } });
+  inserted++;
+}
 
-          etablissement: row.etablissement || row.Etablissement || null,
-          annee_diplome: row.annee_diplome
-            ? parseInt(row.annee_diplome)
-            : null,
-          type_cursus: row.type_cursus || null,
-          filiere: row.filiere || row.Filiere || null,
-          specialite:
-            row.specialite || row.Specialite || row.Spécialité || null,
-          diplome: row.diplome || row.Diplome || row.Diplôme || null,
 
-          annee_bac: row.annee_bac || null,
-          matricule_bac: row.matricule_bac || null,
-
-          categorie_classement_master:
-            row.categorie_classement_master || null,
-          moyenne_avant_derniere_ann: row.moyenne_avant_derniere_ann
-            ? parseFloat(row.moyenne_avant_derniere_ann)
-            : null,
-          moyenne_derniere_annee: row.moyenne_derniere_annee
-            ? parseFloat(row.moyenne_derniere_annee)
-            : null,
-          note_memoire_master: row.note_memoire_master
-            ? parseFloat(row.note_memoire_master)
-            : null,
-
-          specialite_demandee_fr: row.specialite_demandee_fr || null,
-          specialite_demandee_ar: row.specialite_demandee_ar || null,
-
-          url_progres: row.url_progres || null,
-          sheet_origine: row.sheet_origine || "LMD",
-          statut: row.statut || row.Statut || "INSCRIT",
-        };
-
-        // UPSERT (replace ON DUPLICATE KEY)
-        await prisma.candidates.upsert({
-          where: { email: data.email }, // assuming email unique
-          update: data,
-          create: data,
-        });
-
-        imported++;
       } catch (e) {
         errors++;
-        errorDetails.push({ row, reason: e.message });
+        errorDetails.push({ reason: e.message });
       }
     }
 
-    // ─── LOG IMPORT ────────────────────────
-    await prisma.importLogs.create({
+    // ── AuditLog ──────────────────────────────────────────────────────────────
+    await prisma.auditLog.create({
       data: {
-        filename: req.file.originalname,
-        total_lines: candidates.length,
-        imported,
-        errors,
-        imported_by: req.user?.id || 1,
+        user_id:      req.user.userId,
+        action:       "CANDIDATES_IMPORTED",
+        target_table: "candidates",
+        target_id:    competition_id,
+        description:  `Import "${req.file.originalname}" competition#${competition_id} — ${rows.length} lignes, ${inserted} insérés, ${updated} mis à jour, ${errors} erreurs`,
+        ip_address:   req.ip,
       },
     });
 
-    fs.unlinkSync(filePath);
+    cleanupFile(filePath);
 
-    return res.json({
-      success: true,
-      message: "Import terminé",
-      total: candidates.length,
-      imported,
+    return res.status(201).json({
+      success:      true,
+      message:      "Import terminé",
+      competition_id,
+      total:        rows.length,
+      inserted,
+      updated,
       errors,
       errorDetails: errors > 0 ? errorDetails : undefined,
     });
 
   } catch (err) {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    cleanupFile(filePath);
     return res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ─── EXPORT to Excel ──────────────────────────────────────────────────────────
-exports.exportCandidates = async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/candidates?competition_id=1&search=...&sheet_origine=LMD
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getAllCandidates = async (req, res) => {
   try {
-   const candidates = await prisma.candidates.findMany({
-  select: {
-    candidate_id: true,
-    nom: true,
-    prenom: true,
-    email: true,
-    statut: true,
-    created_at: true
-  }
-});
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(candidates);
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Candidats");
+    const { search, sheet_origine, competition_id, page = 1, limit = 1000 } = req.query;
+    const skip  = (Number(page) - 1) * Number(limit);
+    const where = {};
 
-    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    if (competition_id) where.competition_id = Number(competition_id);
+    if (sheet_origine)  where.sheet_origine  = sheet_origine;
 
-    res.setHeader("Content-Disposition", "attachment; filename=candidats.xlsx");
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-    res.send(buffer);
+    if (search) {
+      where.OR = [
+        { nom:           { contains: search } },
+        { prenom:        { contains: search } },
+        { candidate_id:  { contains: search } },
+        { email:         { contains: search } },
+        { matricule_bac: { contains: search } },
+      ];
+    }
+
+    const [candidates, total] = await Promise.all([
+      prisma.candidates.findMany({ where, orderBy: { id: "asc" } , skip, take: Number(limit) }),
+      prisma.candidates.count({ where }),
+    ]);
+
+    return res.json({
+      success: true,
+      data:    candidates,
+      pagination: {
+        total,
+        page:       Number(page),
+        limit:      Number(limit),
+        totalPages: Math.ceil(total / Number(limit)),
+      },
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// ─── GET Stats ────────────────────────────────────────────────────────────────
-exports.getStats = async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/candidates/:id
+// ─────────────────────────────────────────────────────────────────────────────
+exports.getCandidateById = async (req, res) => {
   try {
-    const data = {
-      total: await prisma.candidates.count(),
-      inscrits: await prisma.candidates.count({ where: { statut: "INSCRIT" } }),
-      places_en_salle: await prisma.candidates.count({ where: { statut: "PLACE" } }),
-      elimines: await prisma.candidates.count({ where: { statut: "ELIMINE" } }),
-      lmd: await prisma.candidates.count({ where: { sheet_origine: "LMD" } }),
-      bac5: await prisma.candidates.count({ where: { sheet_origine: "BAC+5" } }),
-      autres: await prisma.candidates.count({ where: { sheet_origine: "AUTRES" } }),
-    };
-
-    res.json({ success: true, data });
-
+    const candidate = await prisma.candidates.findFirst({
+      where: {
+        OR: [
+          { id:           Number(req.params.id) || 0 },
+          { candidate_id: req.params.id },
+        ],
+      },
+      include: {
+        candidateRooms: true,
+        attendance:     true,
+      },
+    });
+    if (!candidate)
+      return res.status(404).json({ success: false, message: "Candidat non trouvé" });
+    return res.json({ success: true, data: candidate });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
