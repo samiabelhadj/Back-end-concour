@@ -13,15 +13,21 @@ const cleanupFile = (filePath) => {
 };
 
 // ─── Générer candidate_id (ex: ED26-001) ─────────────────────────────────────
-const generateCandidateId = async () => {
+// ─── Générer N candidate_ids d'un coup ───────────────────────────────────────
+const generateCandidateIds = async (count) => {
   const year   = new Date().getFullYear().toString().slice(-2);
   const prefix = `ED${year}-`;
-  const last   = await prisma.candidates.findFirst({
+
+  const last = await prisma.candidates.findFirst({
     where:   { candidate_id: { startsWith: prefix } },
     orderBy: { candidate_id: "desc" },
   });
-  if (!last) return `${prefix}001`;
-  return `${prefix}${String(parseInt(last.candidate_id.split("-")[1], 10) + 1).padStart(3, "0")}`;
+
+  const lastNum = last ? parseInt(last.candidate_id.split("-")[1], 10) : 0;
+
+  return Array.from({ length: count }, (_, i) =>
+    `${prefix}${String(lastNum + i + 1).padStart(3, "0")}`
+  );
 };
 
 // ─── Convertir une date string → DateTime valide ou null ─────────────────────
@@ -188,50 +194,86 @@ exports.importCandidates = async (req, res) => {
     let errors       = 0;
     const errorDetails = [];
 
-    for (const row of rows) {
-      try {
-        const mapped = mapRow(row, competition_id);
+    // ── 1. Valider et mapper toutes les lignes ────────────────────────────────
+const validRows   = [];
 
-        // Validation champs obligatoires
-        if (!mapped.nom || !mapped.prenom ) {
-          errors++;
-          errorDetails.push({
-            reason: `Champs manquants — nom:"${mapped.nom}" prenom:"${mapped.prenom}"`,
-          });
-          continue;
-        }
+for (const row of rows) {
+  const mapped = mapRow(row, competition_id);
 
-        // Validation format email
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.email)) {
-          errors++;
-          errorDetails.push({ reason: `Email invalide : ${mapped.email}` });
-          continue;
-        }
-        
-let existing = null;
-
-if (mapped.email) {
-  existing = await prisma.candidates.findUnique({ where: { email: mapped.email } });
-}
-if (!existing && mapped.matricule_bac) {
-  existing = await prisma.candidates.findFirst({ where: { matricule_bac: mapped.matricule_bac } });
+  if (!mapped.nom || !mapped.prenom) {
+    errors++;
+    errorDetails.push({ reason: `Champs manquants — nom:"${mapped.nom}" prenom:"${mapped.prenom}"` });
+    continue;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mapped.email)) {
+    errors++;
+    errorDetails.push({ reason: `Email invalide : ${mapped.email}` });
+    continue;
+  }
+  validRows.push(mapped);
 }
 
-if (existing) {
-  await prisma.candidates.update({ where: { id: existing.id }, data: mapped });
-  updated++;
-} else {
-  const candidate_id = await generateCandidateId();
-  await prisma.candidates.create({ data: { candidate_id, ...mapped } });
-  inserted++;
-}
+// ── 2. Séparer nouveaux et existants ─────────────────────────────────────
+const newRows    = [];
+const updateRows = [];
+const seenEmails = new Set(); // ← ajouter cette ligne
 
+for (const mapped of validRows) {
+  let existing = null;
+  if (mapped.email) {
+    existing = await prisma.candidates.findUnique({ where: { email: mapped.email } });
+  }
+  if (!existing && mapped.matricule_bac) {
+    existing = await prisma.candidates.findFirst({ where: { matricule_bac: mapped.matricule_bac } });
+  }
 
-      } catch (e) {
-        errors++;
-        errorDetails.push({ reason: e.message });
-      }
+  if (existing) {
+    updateRows.push({ existing, mapped });
+  } else {
+    // ← Vérifier si l'email a déjà été vu dans ce même import
+    if (mapped.email && seenEmails.has(mapped.email)) {
+      errors++;
+      errorDetails.push({ reason: `Doublon dans le fichier Excel — email: ${mapped.email}` });
+      continue; // ← ignorer le doublon
     }
+    if (mapped.email) seenEmails.add(mapped.email); // ← mémoriser l'email
+    newRows.push(mapped);
+  }
+}
+
+// ── 3. Générer tous les IDs d'un coup ────────────────────────────────────
+const candidateIds = await generateCandidateIds(newRows.length);
+
+for (let i = 0; i < newRows.length; i++) {
+  try {
+    await prisma.candidates.create({
+      data: { candidate_id: candidateIds[i], ...newRows[i] },
+    });
+    inserted++;
+  } catch (e) {
+    // Si doublon email → update au lieu de planter
+    if (e.message.includes("candidates_email_key") && newRows[i].email) {
+      try {
+        const existing = await prisma.candidates.findUnique({
+          where: { email: newRows[i].email }
+        });
+        if (existing) {
+          await prisma.candidates.update({
+            where: { id: existing.id },
+            data: newRows[i],
+          });
+          updated++;
+        }
+      } catch (_) {
+        errors++;
+        errorDetails.push({ reason: `Doublon email : ${newRows[i].email}` });
+      }
+    } else {
+      errors++;
+      errorDetails.push({ reason: e.message });
+    }
+  }
+}     
 
     // ── AuditLog ──────────────────────────────────────────────────────────────
     await prisma.auditLog.create({
@@ -370,6 +412,8 @@ exports.deleteCandidatesByCompetition = async (req, res) => {
         where: { competition_id },
       });
     });
+    // Après la transaction — reset auto_increment
+     await prisma.$executeRaw`ALTER TABLE candidates AUTO_INCREMENT = 1`;
 
     await prisma.auditLog.create({
       data: {
