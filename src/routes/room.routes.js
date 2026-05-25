@@ -20,8 +20,8 @@ const {
 
 const {verifyToken,requireRole} =require("../middleware/auth.middleware")
 
-// router.use(verifyToken)
-// router.use(requireRole("coordinator"))
+router.use(verifyToken)
+router.use(requireRole("coordinator"))
 
  
 // ── Stats & availability ─────────────────────────────────────────────────────
@@ -49,8 +49,11 @@ router.delete("/:id/competitions/:competition_id", unlinkRoomFromCompetition); /
 // ── Emargement ───────────────────────────────────────────────────────────────
 router.get("/:room_id/emargement", getEmargement);           // GET  /api/rooms/1/emargement?exam_id=1
 
-// ── Supervisors ──────────────────────────────────────────────────────────────
-router.post("/:room_id/supervisors", assignSupervisor);      // POST /api/rooms/1/supervisors
-router.delete("/:room_id/supervisors/:supervisor_id", removeSupervisor); // DELETE /api/rooms/1/supervisors/3?exam_id=1
+
+
+//? this is for the supervisor 
+ 
+// router.post("/:room_id/supervisors", assignSupervisor);      
+// router.delete("/:room_id/supervisors/:supervisor_id", removeSupervisor); 
 
 module.exports = router;
