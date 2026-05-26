@@ -1,10 +1,217 @@
 const prisma  = require('../config/db')
 const bcrypt = require("bcrypt");
+const XLSX = require("xlsx");
 const {checkRoleConflicts }= require('../services/roleConflict.service')
 const {sendCredentialsEmail }= require('../services/email.service')
 const {generatePassword}  = require("../services/password.service")
 
 
+const VALID_GRADES = ["MCB", "MCA", "professeur", "IT_engineer"];
+const VALID_ROLES  = ["admin", "professor_creator", "corrector", "supervisor", "jury", "coordinator", "anonymat"];
+
+ exports.importUsers = async (req, res) => {
+  try {
+    // ── 1. File check ─────────────────────────────────────────────────────────
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded. Use multipart/form-data with field name 'file'"
+      });
+    }
+ 
+    // ── 2. Parse Excel ────────────────────────────────────────────────────────
+    const wb   = XLSX.read(req.file.buffer, { type: "buffer" });
+    const ws   = wb.Sheets[wb.SheetNames[0]]; // always use first sheet
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+ 
+    if (!rows.length) {
+      return res.status(400).json({
+        success: false,
+        message: "File is empty or has no data rows"
+      });
+    }
+ 
+    // ── 3. Pre-load valid module IDs from DB ──────────────────────────────────
+    const allModules     = await prisma.academicModule.findMany({ select: { id: true } });
+    const validModuleIds = new Set(allModules.map(m => m.id));
+ 
+    // ── 4. Process rows ───────────────────────────────────────────────────────
+    const created = [];
+    const skipped = [];
+    const errors  = [];
+ 
+    for (let i = 0; i < rows.length; i++) {
+      const row    = rows[i];
+      const rowNum = i + 2; // row 1 is the header in Excel
+ 
+      // ── Sanitize ────────────────────────────────────────────────────────────
+      const first_name = String(row.first_name ?? "").trim();
+      const last_name  = String(row.last_name  ?? "").trim();
+      const email      = String(row.email      ?? "").trim().toLowerCase();
+      const gradeRaw = String(row.grade ?? "").trim();
+      const grade = gradeRaw === "IT engineer" ? "IT_engineer" : gradeRaw || null;
+      const faculty    = String(row.faculty    ?? "").trim();
+ 
+      const roles = String(row.roles ?? "")
+        .split(",")
+        .map(r => r.trim())
+        .filter(Boolean);
+ 
+      const module_ids = String(row.module_ids ?? "")
+        .split(",")
+        .map(id => parseInt(id.trim()))
+        .filter(id => !isNaN(id));
+ 
+      // ── Validate ────────────────────────────────────────────────────────────
+      const rowErrors = [];
+ 
+      if (!first_name)    rowErrors.push("first_name is required");
+      if (!last_name)     rowErrors.push("last_name is required");
+      if (!email)         rowErrors.push("email is required");
+      if (!faculty)       rowErrors.push("faculty is required");
+      if (!roles.length)  rowErrors.push("at least one role is required");
+ 
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        rowErrors.push(`invalid email format: "${email}"`);
+      }
+ 
+      if (grade && !VALID_GRADES.includes(grade)) {
+        rowErrors.push(`invalid grade "${grade}" — must be one of: ${VALID_GRADES.join(", ")}`);
+      }
+ 
+      const invalidRoles = roles.filter(r => !VALID_ROLES.includes(r));
+      if (invalidRoles.length) {
+        rowErrors.push(`invalid role(s): ${invalidRoles.join(", ")} — valid: ${VALID_ROLES.join(", ")}`);
+      }
+ 
+      const invalidModules = module_ids.filter(id => !validModuleIds.has(id));
+      if (invalidModules.length) {
+        rowErrors.push(`module IDs not found in DB: ${invalidModules.join(", ")}`);
+      }
+ 
+      if (rowErrors.length) {
+        errors.push({ row: rowNum, email: email || "(empty)", issues: rowErrors });
+        continue;
+      }
+ 
+      // ── Skip existing emails ─────────────────────────────────────────────────
+      const existing = await prisma.users.findUnique({ where: { email } });
+      if (existing) {
+        skipped.push({ row: rowNum, email, reason: "Email already exists" });
+        continue;
+      }
+ 
+      // ── Create user ──────────────────────────────────────────────────────────
+      try {
+        const plainPassword = generatePassword();
+        const password_hash = await bcrypt.hash(plainPassword, 12);
+ 
+        const newUser = await prisma.$transaction(async (tx) => {
+          // 1. Create user
+          const user = await tx.users.create({
+            data: {
+              first_name,
+              last_name,
+              email,
+              password_hash,
+              grade:     grade || null,
+              faculty,
+              is_active: true
+            }
+          });
+ 
+          // 2. Assign roles
+          await tx.userRole.createMany({
+            data: roles.map(role => ({
+              user_id:     user.id,
+              role,
+              assigned_at: new Date(),
+              assigned_by: req.user.userId
+            }))
+          });
+ 
+          // 3. Assign modules (optional)
+          if (module_ids.length) {
+            await tx.userModule.createMany({
+              data: module_ids.map(id => ({
+                user_id:           user.id,
+                academicModule_id: id
+              }))
+            });
+          }
+ 
+          // 4. Audit log
+          await tx.auditLog.create({
+            data: {
+              user_id:      req.user.userId,
+              action:       "USER_CREATED_VIA_IMPORT",
+              target_table: "users",
+              target_id:    user.id,
+              description:  `Imported user ${email} from Excel file "${req.file.originalname}"`,
+              ip_address:   req.ip
+            }
+          });
+ 
+          return user;
+        });
+ 
+        // Send credentials email — non-blocking, import doesn't fail if email fails
+        sendCredentialsEmail(
+          { first_name, last_name, email, roles },
+          plainPassword
+        ).catch(err => console.error(`[import] email failed for ${email}:`, err.message));
+ 
+        created.push({
+          row:   rowNum,
+          id:    newUser.id,
+          email,
+          roles,
+          modules: module_ids
+        });
+ 
+      } catch (txError) {
+        errors.push({
+          row:    rowNum,
+          email,
+          issues: [`Database error: ${txError.message}`]
+        });
+      }
+    }
+ 
+    // ── 5. Log the import summary ─────────────────────────────────────────────
+    await prisma.importLogs.create({
+      data: {
+        filename:    req.file.originalname,
+        total_lines: rows.length,
+        imported:    created.length,
+        errors:      errors.length,
+        imported_by: req.user.userId
+      }
+    });
+ 
+    // ── 6. Response ───────────────────────────────────────────────────────────
+    return res.status(200).json({
+      success: true,
+      summary: {
+        total_rows: rows.length,
+        created:    created.length,
+        skipped:    skipped.length,
+        errors:     errors.length
+      },
+      created,
+      skipped,
+      errors
+    });
+ 
+  } catch (error) {
+    console.error("[importUsers]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Import failed",
+      detail:  error.message
+    });
+  }
+};
 // ─────────────────────────────────────────
 // POST /api/admin/users
 // Create a user with  roles and modules
