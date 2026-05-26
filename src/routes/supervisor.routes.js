@@ -19,10 +19,18 @@ router.post(
   '/attendance',
   supervisorController.markAttendance
 );
+router.post(
+  '/attendance/all',
+  supervisorController.markAllPresent
+);
 
 router.get(
-  '/attendance-summary/:sessionId',
+  '/attendance/summary/:sessionId',
   supervisorController.getAttendanceSummary
 );
+router.get(
+  '/room-info/:sessionId',
+   supervisorController.getRoomInfo
+  );
 
 module.exports = router;
