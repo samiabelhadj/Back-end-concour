@@ -9,6 +9,11 @@ const {generatePassword}  = require("../services/password.service")
 const VALID_GRADES = ["MCB", "MCA", "professeur", "IT_engineer"];
 const VALID_ROLES  = ["admin", "professor_creator", "corrector", "supervisor", "jury", "coordinator", "anonymat"];
 
+
+// ─────────────────────────────────────────
+// POST /api/admin/users/non-admin
+// import users from excel file 
+// ─────────────────────────────────────────
  exports.importUsers = async (req, res) => {
   try {
     // ── 1. File check ─────────────────────────────────────────────────────────
@@ -384,37 +389,85 @@ exports.getUserById = async (req, res) => {
 
 // ─────────────────────────────────────────
 // PATCH /api/admin/users/:id
-// Update user info (not roles/modules — roles/modules are separate)
+// Update user info 
 // ─────────────────────────────────────────
 exports.updateUser = async (req, res) => {
   try {
-    const { first_name, last_name, grade, faculty } = req.body
+    const { first_name, last_name, grade, faculty, roles, modules } = req.body
     const userId = Number(req.params.id)
+    const adminId = req.user.userId
 
-    if (!first_name && !last_name && !grade && !faculty) {
+    // nothing sent at all
+    if (!first_name && !last_name && !grade && !faculty && !roles && !modules) {
       return res.status(400).json({ message: "no data" })
     }
 
-    const updated = await prisma.users.update({
-      where: { id: userId },
-      data: {
-        first_name: first_name ?? undefined,
-        last_name: last_name ?? undefined,
-        grade: grade ?? undefined,
-        faculty: faculty ?? undefined,
-        updated_at: new Date()
-      }
-    })
+    await prisma.$transaction(async (tx) => {
 
-    await prisma.auditLog.create({
-      data: {
-        user_id: req.user.userId,
-        action: 'USER_UPDATED',
-        target_table: 'users',
-        target_id: userId,
-        description: `Updated user ${userId}`,
-        ip_address: req.ip
+      // ── 1. Basic user fields ────────────────────────────────────────
+      if (first_name || last_name || grade || faculty) {
+        await tx.users.update({
+          where: { id: userId },
+          data: {
+            first_name: first_name ?? undefined,
+            last_name:  last_name  ?? undefined,
+            grade:      grade      ?? undefined,
+            faculty:    faculty    ?? undefined,
+            updated_at: new Date()
+          }
+        })
       }
+
+      // ── 2. Roles ────────────────────────────────────────────────────
+      // strategy: delete all existing → insert new ones
+      if (roles && Array.isArray(roles)) {
+        await tx.userRole.deleteMany({
+          where: { user_id: userId }
+        })
+
+        if (roles.length > 0) {
+          await tx.userRole.createMany({
+            data: roles.map(role => ({
+              user_id:     userId,
+              role:        role,
+              assigned_by: adminId,   // who made the change
+            }))
+          })
+        }
+      }
+
+      // ── 3. Modules ──────────────────────────────────────────────────
+      // same strategy: delete all → insert new ones
+      if (modules && Array.isArray(modules)) {
+        await tx.userModule.deleteMany({
+          where: { user_id: userId }
+        })
+
+        if (modules.length > 0) {
+          await tx.userModule.createMany({
+            data: modules.map(moduleId => ({
+              user_id:           userId,
+              academicModule_id: moduleId,
+            }))
+          })
+        }
+      }
+
+      // ── 4. Audit log ────────────────────────────────────────────────
+      await tx.auditLog.create({
+        data: {
+          user_id:      adminId,
+          action:       'USER_UPDATED',
+          target_table: 'users',
+          target_id:    userId,
+          description:  `Updated user ${userId} — fields: ${[
+            first_name || last_name || grade || faculty ? 'profile' : null,
+            roles   ? `roles → [${roles.join(', ')}]`   : null,
+            modules ? `modules → [${modules.join(', ')}]` : null,
+          ].filter(Boolean).join(' | ')}`,
+          ip_address: req.ip
+        }
+      })
     })
 
     res.json({ message: 'User updated successfully' })
@@ -515,3 +568,81 @@ exports.hardDeleteUser = async (req, res) => {
     res.status(500).json({ message: 'Server error during delete' })
   }
 }
+
+
+exports.deleteAllNonAdminUsers = async (req, res) => {
+  try {
+    const currentAdminId = req.user.userId;
+
+    // 1. Get all admin user IDs
+    const adminUsers = await prisma.userRole.findMany({
+      where: {
+        role: "admin"
+      },
+      select: {
+        user_id: true
+      }
+    });
+
+    const adminIds = adminUsers.map(u => u.user_id);
+
+    // also protect current admin
+    if (!adminIds.includes(currentAdminId)) {
+      adminIds.push(currentAdminId);
+    }
+
+    // 2. Get all users to delete (NOT admins)
+    const usersToDelete = await prisma.users.findMany({
+      where: {
+        id: { notIn: adminIds }
+      },
+      select: { id: true }
+    });
+
+    const deleteIds = usersToDelete.map(u => u.id);
+
+    if (deleteIds.length === 0) {
+      return res.json({ message: "No users to delete" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+
+      // 3. delete relations first
+      await tx.userRole.deleteMany({
+        where: { user_id: { in: deleteIds } }
+      });
+
+      await tx.userModule.deleteMany({
+        where: { user_id: { in: deleteIds } }
+      });
+
+      await tx.users.deleteMany({
+        where: { id: { in: deleteIds } }
+      });
+
+      // 4. audit log
+      await tx.auditLog.create({
+        data: {
+          user_id: currentAdminId,
+          action: "DELETE_NON_ADMIN_USERS",
+          target_table: "users",
+          target_id: null,
+          description: `Deleted ${deleteIds.length} non-admin users`,
+          ip_address: req.ip
+        }
+      });
+    });
+
+    res.json({
+      message: "Non-admin users deleted successfully",
+      deleted_count: deleteIds.length
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: "Server error during bulk delete",
+      detail: error.message
+    });
+  }
+};
