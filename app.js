@@ -9,6 +9,7 @@ const app = express();
 app.use(cors()); //!change it later
 app.use(express.json());
 app.set('trust proxy',true);
+// app.set('trust proxy',1); //* just leave it here
 
 //Routes
 

@@ -37,8 +37,8 @@ router.get('/users',UserAdminController.getAllUsers);
 router.get('/users/:id',UserAdminController.getUserById);
 router.patch('/users/:id',UserAdminController.updateUser);
 router.delete('/users/:id',UserAdminController.deactivateUser)
-
-
+router.delete('/users/:id/hard',UserAdminController.hardDeleteUser)
+router.delete('/users/non-admin', UserAdminController.deleteAllNonAdminUsers)
 
 
 

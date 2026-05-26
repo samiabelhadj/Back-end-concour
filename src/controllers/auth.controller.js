@@ -61,6 +61,7 @@ exports.login = async (req, res) => {
     });
 
     const roles = roleRows.map(r => r.role);
+    const activeRole = roles[0]; //? default:the first one 
 
     // modules
     const moduleRows = await prisma.userModule.findMany({
@@ -114,6 +115,7 @@ exports.login = async (req, res) => {
         faculty: user.faculty,
         modules,
         roles,
+        activeRole,
       }
     });
 
@@ -122,6 +124,58 @@ exports.login = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+
+/* ─────────────────────────────────────────
+   GET /api/auth/switch-role
+───────────────────────────────────────── */
+
+exports.switchRole = async (req,res)=>{
+  try {
+    const { role } = req.body;           // role the user wants to switch to
+    const userId = req.user.userId;      // from your auth middleware
+    const userRoles = req.user.roles;    // already in the JWT
+
+    // 1. Validate: does this user actually HAVE this role?
+    if (!userRoles.includes(role)) {
+      return res.status(403).json({ 
+        message: 'You do not have access to this role' 
+      });
+    }
+    const newToken = jwt.sign(
+      {
+        userId,
+        email: req.user.email,
+        roles: userRoles,   // all roles stay the same
+        activeRole: role,   // 👈 only this changes
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+    // 3. Optional audit log
+    await prisma.auditLog.create({
+      data: {
+        user_id: userId,
+        action: 'ROLE_SWITCH',
+        target_table: 'users',
+        target_id: userId,
+        description: `User switched to role: ${role}`,
+        ip_address: req.ip,
+        logged_at: new Date()
+      }
+    });
+
+    res.json({
+      token: newToken,       // frontend replaces the old token
+      activeRole: role,
+    });
+
+
+  } catch (error) {
+     console.error('SWITCH ROLE ERROR:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
 
 /* ─────────────────────────────────────────
    GET /api/auth/me
