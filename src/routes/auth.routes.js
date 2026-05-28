@@ -2,11 +2,10 @@ const express    = require('express')
 const router     = express.Router()
 const authController  = require('../controllers/auth.controller')
 const { verifyToken } = require('../middleware/auth.middleware')
-const { loginLimiter } = require('../middleware/rateLimiter');//limits login attempths
-
+const { loginLimiter } = require('../middleware/rateLimiter');//limits login attempths 
  
 router.post('/login', loginLimiter, authController.login)
- 
+router.post('/switch-role',verifyToken,authController.switchRole)
  
 router.get('/me', verifyToken, authController.getMe)
 

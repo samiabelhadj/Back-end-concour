@@ -53,7 +53,7 @@ router.get("/:room_id/emargement", getEmargement);           // GET  /api/rooms/
 
 //? this is for the supervisor 
  
-// router.post("/:room_id/supervisors", assignSupervisor);      
-// router.delete("/:room_id/supervisors/:supervisor_id", removeSupervisor); 
+router.post("/:room_id/supervisors", assignSupervisor);      
+router.delete("/:room_id/supervisors/:supervisor_id", removeSupervisor); 
 
 module.exports = router;
