@@ -303,3 +303,11 @@ model exam {
   candidateRooms  candidateRoom[]
   roomSupervisors roomSupervisor[]
 }
+model university {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(200)
+  faculty    String   @db.VarChar(200)
+  wilaya     String?  @db.VarChar(100)
+  logo_url   String?  @db.VarChar(255)
+  created_at DateTime @default(now())
+}
