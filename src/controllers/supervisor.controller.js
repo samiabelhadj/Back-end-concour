@@ -69,7 +69,7 @@ exports.getCandidates = async (req, res) => {
 
         candidate: {
           select: {
-            id: true,
+            candidate_id: true,
             nom: true,
             prenom: true
           }
@@ -100,7 +100,7 @@ exports.getCandidates = async (req, res) => {
       const att = map.get(`${r.candidate_id}-${r.room_id}`);
 
       return {
-        candidate_id: r.candidate.id,
+        candidate_id: r.candidate.candidate_id,
         first_name: r.candidate.prenom,
         last_name: r.candidate.nom,
         room_id: r.room.id,
