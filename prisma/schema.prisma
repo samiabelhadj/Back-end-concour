@@ -96,26 +96,26 @@ enum users_grade {
   professeur
   IT_engineer @map("IT engineer")
 }
-
 model competition {
   id                    Int         @id @default(autoincrement())
   name                  String      @db.VarChar(200)
   academic_year         String      @db.VarChar(20)
+  specialty             String?     @db.VarChar(150)
+  target_date           DateTime?
+  status                CompStatus  @default(ACTIVE)
   description           String?     @db.Text
   max_admitted          Int?
   waiting_list_size     Int?
-  discrepancy_threshold Decimal?    @db.Decimal(5, 2) //used to trigger a 3rd corrector.
+  discrepancy_threshold Decimal?    @db.Decimal(5, 2)
   affectation           Affectation @default(MANUEL)
   created_by            Int
   created_at            DateTime    @default(now())
 
-  creator    users        @relation(fields: [created_by], references: [id])
-  candidates candidates[]
-
+  creator          users             @relation(fields: [created_by], references: [id])
+  candidates       candidates[]
   exams            exam[]
   competitionRooms competitionRoom[]
-examSessions     examSession[]  
-  
+  examSessions     examSession[]
 }
 model examSession {
   id             Int      @id @default(autoincrement())
@@ -136,6 +136,10 @@ model examSession {
 enum Affectation {
   MANUEL
   AUTOMATIQUE
+}
+enum CompStatus {
+  ACTIVE
+  FINISHED
 }
 
 model candidates {

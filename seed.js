@@ -1,30 +1,22 @@
-const prisma = require("./src/config/db");
-const bcrypt = require("bcrypt");
+const prisma = require('./src/config/db');
+const bcrypt = require('bcrypt');
 
 async function main() {
-  const password_hash = await bcrypt.hash("password123", 12);
-
-  const user = await prisma.users.create({
-    data: {
-      first_name: "Admin",
-      last_name:  "ESI",
-      email:      "admin@esi.dz",
-      password_hash,
-      faculty:    "ESI",
-      is_active:  true,
-    }
-  });
-
+  // Ajoute le rôle admin à l'utilisateur id=1
   await prisma.userRole.create({
     data: {
-      user_id:     user.id,
-      role:        "COORDINATEUR",
+      user_id:     1,
+      role:        "admin",
       assigned_at: new Date(),
-      assigned_by: user.id,
+      assigned_by: 1,
     }
   });
 
-  console.log("Utilisateur créé — email: admin@esi.dz / password: password123");
+  console.log("Rôle admin ajouté !");
+
+  // Vérification
+  const roles = await prisma.userRole.findMany();
+  console.log("Roles :", JSON.stringify(roles, null, 2));
 }
 
 main()
