@@ -96,7 +96,7 @@ function buildAttendanceTemplate(data) {
       // },
 
       // 5. candidate table
-      drawCandidatesTable(data.candidates),
+      drawCandidatesTable(data.candidates, data.exams),
 
       // 6. signature area
       drawSignatureArea(

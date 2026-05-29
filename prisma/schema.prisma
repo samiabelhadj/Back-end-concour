@@ -79,23 +79,24 @@ model importLogs {
 }
 
 model competition {
-  id                    Int               @id @default(autoincrement())
-  name                  String            @db.VarChar(200)
-  academic_year         String            @db.VarChar(20)
-  description           String?           @db.Text
+  id                    Int                @id @default(autoincrement())
+  name                  String             @db.VarChar(200)
+  academic_year         String             @db.VarChar(20)
+  description           String?            @db.Text
   max_admitted          Int?
   waiting_list_size     Int?
-  discrepancy_threshold Decimal?          @db.Decimal(5, 2)
-  affectation           Affectation       @default(MANUEL)
+  discrepancy_threshold Decimal?           @db.Decimal(5, 2)
+  affectation           Affectation        @default(MANUEL)
   created_by            Int
-  created_at            DateTime          @default(now())
-  specialty             String?           @db.VarChar(200)
-  status                String?           @db.VarChar(50)
+  created_at            DateTime           @default(now())
+  specialty             String?            @db.VarChar(150)
+  status                competition_status @default(ACTIVE)
   target_date           DateTime?
   candidates            candidates[]
-  creator               users             @relation(fields: [created_by], references: [id])
+  creator               users              @relation(fields: [created_by], references: [id])
   competitionRooms      competitionRoom[]
   exams                 exam[]
+  examSession           examSession[]
 
   @@index([created_by], map: "competition_created_by_fkey")
 }
@@ -161,11 +162,14 @@ model examSession {
   name           String          @db.VarChar(100)
   start_time     DateTime
   end_time       DateTime
+  competition_id Int?
   attendance     attendance[]
   candidateRooms candidateRoom[]
+  competition    competition?    @relation(fields: [competition_id], references: [id])
   exam           exam            @relation(fields: [exam_id], references: [id])
 
   @@unique([exam_id, name])
+  @@index([competition_id], map: "examSession_competition_id_fkey")
 }
 
 model attendance {
@@ -257,15 +261,14 @@ model exam {
 
   @@index([competition_id], map: "exam_competition_id_fkey")
 }
-
 model university {
-  id         Int      @id @default(autoincrement())
-  name       String   @db.VarChar(200)
-  name_ar    String?  @db.VarChar(200)
-  faculty    String   @db.VarChar(200)
-  wilaya     String?  @db.VarChar(100)
-  logo_url   String?  @db.VarChar(255)
-  created_at DateTime @default(now())
+  id           Int    @id @default(autoincrement())
+  name         String @db.VarChar(200)
+  name_ar      String? @db.VarChar(200)
+  faculty      String @db.VarChar(200)
+  wilaya       String? @db.VarChar(100)
+  logo_url     String? @db.VarChar(255)
+  created_at   DateTime @default(now())
 }
 
 enum user_role_role {
@@ -296,4 +299,9 @@ enum ExamRoomStatus {
   RESERVED
   OUT_OF_SERVICE
   CLOSED
+}
+
+enum competition_status {
+  ACTIVE
+  FINISHED
 }

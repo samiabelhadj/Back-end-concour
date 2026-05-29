@@ -1,7 +1,7 @@
 const prisma = require('../../config/db');
 
 async function fetchPVData(sessionId, roomId) {
-  const [session, room, university] = await Promise.all([
+  const [session, room, universityRow] = await Promise.all([
     prisma.examSession.findUnique({
       where:   { id: sessionId },
       include: {
@@ -19,7 +19,12 @@ async function fetchPVData(sessionId, roomId) {
   if (!session) throw new Error('SESSION_NOT_FOUND');
   if (!room)    throw new Error('ROOM_NOT_FOUND');
 
-  // candidates in this room + session
+  const exams = await prisma.exam.findMany({
+    where:   { competition_id: session.exam.competition_id },
+    select:  { id: true, name: true },
+    orderBy: { id: 'asc' }
+  });
+
   const candidateRooms = await prisma.candidateRoom.findMany({
     where: { room_id: roomId, session_id: sessionId },
     include: {
@@ -30,17 +35,11 @@ async function fetchPVData(sessionId, roomId) {
     orderBy: { place_number: 'asc' }
   });
 
-  // attendance already recorded
   const attendance = await prisma.attendance.findMany({
-    where: { session_id: sessionId, room_id: roomId },
+    where:  { session_id: sessionId, room_id: roomId },
     select: { candidate_id: true, is_present: true }
   });
 
-  const attendanceMap = new Map(
-    attendance.map(a => [a.candidate_id, a.is_present])
-  );
-
-  // supervisors for this room + exam
   const supervisorRows = await prisma.roomSupervisor.findMany({
     where: { room_id: roomId, exam_id: session.exam_id },
     include: {
@@ -48,7 +47,6 @@ async function fetchPVData(sessionId, roomId) {
     }
   });
 
-  // shape the data for the template
   const candidates = candidateRooms.map(cr => ({
     fullName:   `${cr.candidate.nom} ${cr.candidate.prenom}`,
     seatNumber: cr.place_number,
@@ -63,19 +61,33 @@ async function fetchPVData(sessionId, roomId) {
     name: `${s.supervisor.last_name} ${s.supervisor.first_name}`
   }));
 
+  // safe university object — never undefined fields reaching the template
+  const university = universityRow ? {
+    name:     universityRow.name,
+    name_ar:  universityRow.name_ar  || 'المدرسة العليا للإعلام الآلي',
+    faculty:  universityRow.faculty,
+    logo_url: universityRow.logo_url || null
+  } : {
+    name:     'École Supérieure en Informatique 08 Mai 1945',
+    name_ar:  'المدرسة العليا للإعلام الآلي بسيدي بلعباس',
+    faculty:  'Département des Cycles Supérieurs',
+    logo_url: '/home/nouara/Downloads/1cs_project/logo_esi.png'
+  };
+
   return {
-    university:  university ?? { name: 'Université', faculty: 'Faculté' },
+    university,
     competition: {
       academic_year: session.exam.competition.academic_year,
       department:    session.exam.competition.name,
       domain:        '',
       filiere:       ''
     },
-    exam:        { name: session.exam.name },
-    session:     session,
-    room:        room,
+    exam:     { name: session.exam.name },
+    session,
+    room,
     candidates,
     supervisors,
+    exams,
     stats: {
       total:   candidates.length,
       present,
