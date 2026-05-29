@@ -1,6 +1,6 @@
 const { generateAttendancePV } = require('../services/pv/pv.service');
 
-exports.generatePV = async (req, res) => {
+exports.downloadSurveillancePV = async (req, res) => {
   const sessionId = parseInt(req.params.sessionId, 10);
   const roomId    = parseInt(req.params.roomId,    10);
 

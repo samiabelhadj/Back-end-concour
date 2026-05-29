@@ -30,7 +30,7 @@
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.19.1",
     "nodemailer": "^8.0.2",
-    "pdfmake": "^0.3.9",
+    "pdfmake": "^0.2.10",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

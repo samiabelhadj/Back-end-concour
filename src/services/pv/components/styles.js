@@ -1,42 +1,48 @@
 const styles = {
   title: {
-    fontSize:  13,
+    fontSize:  15,
     bold:      true,
     alignment: 'center',
-    margin:    [0, 0, 0, 4]
+    color:     '#032638',
   },
   subTitle: {
     fontSize:  10,
     alignment: 'center',
+    color:     '#0973A8',
     margin:    [0, 0, 0, 16]
   },
   tableHeader: {
     bold:      true,
     fontSize:  9,
-    fillColor: '#DDDDDD',
+    fillColor: '#0973A8',
+    color:     '#FFFFFF',
     alignment: 'center'
   },
   metaLabel: {
-    bold:     true,
-    fontSize: 9
+    bold:      true,
+    fontSize:  9,
+    color:     '#032638'
   },
   metaValue: {
-    fontSize: 9
+    fontSize:  9,
+    color:     '#333333'
   },
   signatureRole: {
     bold:      true,
-    fontSize:  9,
-    alignment: 'center'
+    fontSize:  10,
+    color:     '#032638',
+    alignment: 'left'
   },
   signatureName: {
     fontSize:  9,
-    alignment: 'center',
-    margin:    [0, 16, 0, 32]
+    color:     '#333333',
+    alignment: 'left',
+    margin:    [0, 6, 0, 0]
   },
   footer: {
     fontSize:  8,
     alignment: 'right',
-    color:     '#666666'
+    color:     '#0973A8'
   }
 };
 

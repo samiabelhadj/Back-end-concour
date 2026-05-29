@@ -1,18 +1,33 @@
 function drawFooter(currentPage, pageCount) {
   return {
-    columns: [
+    margin: [40, 0],
+    stack: [
+      // horizontal line
       {
-        text:      new Date().toLocaleDateString('fr-DZ'),
-        fontSize:  8,
-        alignment: 'left'
+        canvas: [
+          {
+            type:      'line',
+            x1: 0,  y1: 0,
+            x2: 760, y2: 0,
+            lineWidth: 0.8,
+            lineColor: '#A2DDFA'
+          }
+        ],
+        margin: [0, 0, 0, 4]
       },
+      // page number under the line
       {
-        text:      `Page ${currentPage} / ${pageCount}`,
-        fontSize:  8,
-        alignment: 'right'
+        columns: [
+          
+          {
+            text:      `Page ${currentPage} / ${pageCount}`,
+            fontSize:  8,
+            color:     '#0973A8',
+            alignment: 'center'
+          }
+        ]
       }
-    ],
-    margin: [40, 0]
+    ]
   };
 }
 
