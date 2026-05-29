@@ -25,6 +25,7 @@ app.use("/api/candidates", require("./src/routes/candidate.routes"));
 
 app.use('/api/supervisor', supervisorRoutes);
 
+app.use('/api/competitions', require("./src/routes/competition.routes"));
 // Error middleware
 
 app.use(require("./src/middleware/error.middleware"));

@@ -114,8 +114,23 @@ model competition {
 
   exams            exam[]
   competitionRooms competitionRoom[]
-
+examSessions     examSession[]  
   
+}
+model examSession {
+  id             Int      @id @default(autoincrement())
+  exam_id        Int
+  name           String   @db.VarChar(100)
+  start_time     DateTime
+  end_time       DateTime
+  competition_id Int?
+
+  exam           exam         @relation(fields: [exam_id], references: [id])
+  competition    competition? @relation(fields: [competition_id], references: [id])
+  attendance     attendance[]
+  candidateRooms candidateRoom[]
+
+  @@unique([exam_id, name])
 }
 
 enum Affectation {
@@ -196,20 +211,6 @@ model roomSupervisor {
   @@id([room_id, supervisor_id, exam_id])
 }
 
-model examSession {
-  id         Int      @id @default(autoincrement())
-  exam_id    Int
-  name       String   @db.VarChar(100)
-  start_time DateTime
-  end_time   DateTime
-
-  exam            exam             @relation(fields: [exam_id], references: [id])
-  attendance      attendance[]
-  candidateRooms candidateRoom[]
-
-  @@unique([exam_id, name])
-  
-}
 
 model attendance {
   id            Int @id @default(autoincrement())

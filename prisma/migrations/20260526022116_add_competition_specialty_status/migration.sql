@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE `competition` ADD COLUMN `specialty` VARCHAR(150) NULL,
+    ADD COLUMN `status` ENUM('ACTIVE', 'FINISHED') NOT NULL DEFAULT 'ACTIVE',
+    ADD COLUMN `target_date` DATETIME(3) NULL;
