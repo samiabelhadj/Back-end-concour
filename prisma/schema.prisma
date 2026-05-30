@@ -120,10 +120,11 @@ model competition {
 model examSession {
   id             Int      @id @default(autoincrement())
   exam_id        Int
+  competition_id Int?  
   name           String   @db.VarChar(100)
   start_time     DateTime
   end_time       DateTime
-  competition_id Int?
+  
 
   exam           exam         @relation(fields: [exam_id], references: [id])
   competition    competition? @relation(fields: [competition_id], references: [id])

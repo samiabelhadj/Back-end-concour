@@ -400,6 +400,7 @@ exports.addSession = async (req, res) => {
         name,
         start_time: start,
         end_time:   end,
+         competition_id: exam.competition_id,
       },
       include: { exam: true },
     });
@@ -411,6 +412,7 @@ exports.addSession = async (req, res) => {
       targetId:    session.id,
       description: `Admin#${req.user.userId} a planifié la session "${name}" pour le module "${exam.name}" du concours#${competition_id} — ${start.toISOString()} → ${end.toISOString()}`,
       ip:          req.ip,
+      
     });
 
     return res.status(201).json({ success: true, message: "Session planifiée", data: session });
@@ -460,6 +462,7 @@ exports.updateSession = async (req, res) => {
         ...(exam_id    !== undefined && { exam_id:    parseInt(exam_id) }),
         ...(start_time !== undefined && { start_time: new Date(start_time) }),
         ...(end_time   !== undefined && { end_time:   new Date(end_time) }),
+        competition_id: competition_id, 
       },
       include: { exam: true },
     });
@@ -508,4 +511,4 @@ exports.deleteSession = async (req, res) => {
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
-};
+}
