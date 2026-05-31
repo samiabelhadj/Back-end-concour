@@ -287,46 +287,7 @@ enum users_grade {
   professeur
   IT_engineer @map("IT engineer")
 }
-<<<<<<< HEAD
-=======
-model competition {
-  id                    Int         @id @default(autoincrement())
-  name                  String      @db.VarChar(200)
-  academic_year         String      @db.VarChar(20)
-  specialty             String?     @db.VarChar(150)
-  target_date           DateTime?
-  status                CompStatus  @default(ACTIVE)
-  description           String?     @db.Text
-  max_admitted          Int?
-  waiting_list_size     Int?
-  discrepancy_threshold Decimal?    @db.Decimal(5, 2)
-  affectation           Affectation @default(MANUEL)
-  created_by            Int
-  created_at            DateTime    @default(now())
 
-  creator          users             @relation(fields: [created_by], references: [id])
-  candidates       candidates[]
-  exams            exam[]
-  competitionRooms competitionRoom[]
-  examSessions     examSession[]
-}
-model examSession {
-  id             Int      @id @default(autoincrement())
-  exam_id        Int
-  competition_id Int?  
-  name           String   @db.VarChar(100)
-  start_time     DateTime
-  end_time       DateTime
-  
-
-  exam           exam         @relation(fields: [exam_id], references: [id])
-  competition    competition? @relation(fields: [competition_id], references: [id])
-  attendance     attendance[]
-  candidateRooms candidateRoom[]
-
-  @@unique([exam_id, name])
-}
->>>>>>> ahleme
 
 enum Affectation {
   MANUEL
@@ -337,119 +298,6 @@ enum CompStatus {
   FINISHED
 }
 
-<<<<<<< HEAD
-=======
-model candidates {
-  id             Int     @id @default(autoincrement())
-  candidate_id   String? @unique @db.VarChar(20)
-  competition_id Int
-
-  // ── Identifiants ────────────────────────────────────────────────────────────
-  annee_bac     String?
-  matricule_bac String?
-
-  // ── Informations personnelles ───────────────────────────────────────────────
-  nom            String    @db.VarChar(80)
-  prenom         String    @db.VarChar(80)
-  nom_ar         String?   @db.VarChar(80)
-  prenom_ar      String?   @db.VarChar(80)
-  date_naissance DateTime?
-  lieu_naissance String?   @db.VarChar(100)
-  telephone      String?   @db.VarChar(20)
-  email          String    @unique @db.VarChar(150)
-  adresse        String?   @db.VarChar(255)
-
-  // ── Diplôme et cursus ───────────────────────────────────────────────────────
-  etablissement String? @db.VarChar(200)
-  annee_diplome Int?
-  type_cursus   String? @db.VarChar(30)
-  filiere       String? @db.VarChar(150)
-  specialite    String? @db.VarChar(150)
-  diplome       String? @db.VarChar(100)
-
-  // ── Moyennes (BAC+5 uniquement) ─────────────────────────────────────────────
-  categorie_classement_master String? @db.VarChar(100)
-  moyenne_avant_derniere_ann  Float?
-  moyenne_derniere_annee      Float?
-  note_memoire_master         Float?
-
-  // ── Spécialité demandée ─────────────────────────────────────────────────────
-  specialite_demandee_fr String? @db.VarChar(200)
-  specialite_demandee_ar String? @db.VarChar(200)
-
-  // ── Lien progres.mesrs.dz ───────────────────────────────────────────────────
-  url_progres String? @db.VarChar(255)
-
-  // ── Catégorie de candidature ────────────────────────────────────────────────
-  sheet_origine String @default("LMD") @db.VarChar(20)
-
-  // ── Statut ──────────────────────────────────────────────────────────────────
-  statut String @default("INSCRIT") @db.VarChar(20)
-
-  // ── Timestamps ──────────────────────────────────────────────────────────────
-  created_at DateTime  @default(now())
-  updated_at DateTime? @updatedAt
-
-  //   anonymisation_key   anonymisation_key?
-  attendance      attendance[]
-  candidateRooms candidateRoom[]
-
-  competition competition? @relation(fields: [competition_id], references: [id])
-
-  examRoom    examRoom? @relation(fields: [examRoomId], references: [id])
-  examRoomId Int?
-}
-
-model roomSupervisor {
-  room_id       Int
-  supervisor_id Int
-  exam_id       Int
-
-  room       examRoom @relation(fields: [room_id], references: [id])
-  supervisor users     @relation(fields: [supervisor_id], references: [id])
-  exam       exam      @relation(fields: [exam_id], references: [id])
-
-  @@id([room_id, supervisor_id, exam_id])
-}
-
-
-model attendance {
-  id            Int @id @default(autoincrement())
-  candidate_id  Int
-  supervisor_id Int
-  session_id    Int
-  room_id       Int?
-
-  is_present  Boolean  @default(false)
-  remarks     String?
-  recorded_at DateTime @default(now())
-
-  candidate   candidates   @relation(fields: [candidate_id], references: [id])
-  supervisor  users        @relation(fields: [supervisor_id], references: [id])
-  session     examSession @relation(fields: [session_id], references: [id])
-  room        examRoom?   @relation(fields: [room_id], references: [id])
-
-  @@unique([candidate_id, session_id])
-}
-model examRoom {
-  id Int @id @default(autoincrement())
-
-  name       String         @db.VarChar(100)
-  capacity   Int
-  block      String?        @db.VarChar(100)
-  status     ExamRoomStatus @default(AVAILABLE)
-  created_at DateTime       @default(now())
-  attendance attendance[]
-  candidates candidates[]
-
-  roomSupervisor roomSupervisor[]
-  candidateRooms candidateRoom[]
-
-  equipments       equipments[]
-  competitionRooms competitionRoom[]
-}
-
->>>>>>> ahleme
 enum ExamRoomStatus {
   AVAILABLE
   OCCUPIED
@@ -512,4 +360,3 @@ model exam {
   candidateRooms  candidateRoom[]
   roomSupervisors roomSupervisor[]
 }
->>>>>>> ahleme

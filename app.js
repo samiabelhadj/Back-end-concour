@@ -26,12 +26,9 @@ app.use("/api/candidates", require("./src/routes/candidate.routes"));
 
 
 app.use('/api/supervisor', supervisorRoutes);
-<<<<<<< HEAD
-app.use("/api/rooms",require("./src/routes/room.routes"))
-=======
-
+// Remplace le conflit par :
+app.use("/api/rooms", require("./src/routes/room.routes"))
 app.use('/api/competitions', require("./src/routes/competition.routes"));
->>>>>>> ahleme
 // Error middleware
 
 app.use(require("./src/middleware/error.middleware"));
