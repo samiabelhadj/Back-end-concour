@@ -134,8 +134,7 @@ const getSelectedProfessors = async (req, res) => {
 // EXERCISE CRUD (Professor side)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// POST /api/competitions/:competition_id/exercises
- const createExercise = async (req, res) => {
+const createExercise = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
     const professorId = req.user.userId;
@@ -161,17 +160,10 @@ const getSelectedProfessors = async (req, res) => {
       });
     }
 
-    // Required fields
-    if (
-      !title ||
-      !subject ||
-      !nb_questions ||
-      !difficulty
-    ) {
+    if (!title || !subject || !difficulty || !file_path) {
       return res.status(400).json({
         success: false,
-        message:
-          "title, subject, nb_questions and difficulty are required",
+        message: "title, subject, difficulty and file are required",
       });
     }
 
@@ -205,26 +197,15 @@ const getSelectedProfessors = async (req, res) => {
       });
     }
 
-    if (
-      status === "SOUMIS" &&
-      new Date() > selection.deadline
-    ) {
+    if (status === "SOUMIS" && new Date() > selection.deadline) {
       return res.status(403).json({
         success: false,
         message: "Submission deadline has passed",
       });
     }
 
-    // Auto points from difficulty
-    const difficultyPoints = {
-      FACILE: 3,
-      MOYEN: 4,
-      DIFFICILE: 6,
-    };
-
-    const exercise_code = await generateExerciseCode(
-      competition_id
-    );
+    const difficultyPoints = { FACILE: 3, MOYEN: 4, DIFFICILE: 6 };
+    const exercise_code = await generateExerciseCode(competition_id);
 
     const exercise = await prisma.exercise.create({
       data: {
@@ -232,50 +213,29 @@ const getSelectedProfessors = async (req, res) => {
         competition_id,
         professor_id: professorId,
         selection_id: selection.id,
-
         title,
         subject,
-
         points: difficultyPoints[difficulty],
-
-        nb_questions: Number(nb_questions),
-
-        duration_minutes: duration_minutes
-          ? Number(duration_minutes)
-          : null,
-
+        nb_questions: nb_questions ? Number(nb_questions) : null,
+        duration_minutes: duration_minutes ? Number(duration_minutes) : null,
         difficulty,
-
         description: description ?? null,
-
         file_path,
-
         status,
-
-        submitted_at:
-          status === "SOUMIS"
-            ? new Date()
-            : null,
+        submitted_at: status === "SOUMIS" ? new Date() : null,
       },
     });
 
     await audit({
       userId: professorId,
       action: "CREATE_EXERCISE",
-      entity: "Exercise",
-      entityId: exercise.id,
-      details: {
-        exercise_code,
-        competition_id,
-        title,
-        status,
-      },
+      targetTable: "exercise",
+      targetId: exercise.id,
+      description: `Exercise "${title}" created for competition ${competition_id} with status ${status}`,
+      ipAddress: req.ip,
     });
 
-    return res.status(201).json({
-      success: true,
-      data: exercise,
-    });
+    return res.status(201).json({ success: true, data: exercise });
   } catch (error) {
     if (error.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
@@ -283,15 +243,10 @@ const getSelectedProfessors = async (req, res) => {
         message: "File too large. Max 25MB.",
       });
     }
-
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// PUT /api/competitions/exercises/:id
 const updateExercise = async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -312,59 +267,32 @@ const updateExercise = async (req, res) => {
       : undefined;
 
     if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid exercise id" });
+    }
+
+    // only validate difficulty and status if they were sent
+    if (difficulty && !VALID_DIFFICULTIES.includes(difficulty)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid exercise id",
+        message: `Invalid difficulty. Valid values: ${VALID_DIFFICULTIES.join(", ")}`,
       });
     }
 
-    // Required fields
-    if (
-      title === undefined ||
-      subject === undefined ||
-      nb_questions === undefined ||
-      difficulty === undefined ||
-      status === undefined
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "title, subject, nb_questions, difficulty and status are required",
-      });
-    }
-
-    if (!VALID_DIFFICULTIES.includes(difficulty)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid difficulty. Valid values: ${VALID_DIFFICULTIES.join(
-          ", "
-        )}`,
-      });
-    }
-
-    if (!VALID_STATUSES.includes(status)) {
+    if (status && !VALID_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
         message: `Invalid status. Valid values: ${VALID_STATUSES.join(", ")}`,
       });
     }
 
-    const exercise = await prisma.exercise.findUnique({
-      where: { id },
-    });
+    const exercise = await prisma.exercise.findUnique({ where: { id } });
 
     if (!exercise) {
-      return res.status(404).json({
-        success: false,
-        message: "Exercise not found",
-      });
+      return res.status(404).json({ success: false, message: "Exercise not found" });
     }
 
     if (exercise.professor_id !== professorId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not your exercise",
-      });
+      return res.status(403).json({ success: false, message: "Not your exercise" });
     }
 
     if (!["BROUILLON", "EN_REVISION"].includes(exercise.status)) {
@@ -378,7 +306,6 @@ const updateExercise = async (req, res) => {
       const selection = await prisma.professorSelection.findUnique({
         where: { id: exercise.selection_id },
       });
-
       if (selection && new Date() > selection.deadline) {
         return res.status(403).json({
           success: false,
@@ -393,70 +320,49 @@ const updateExercise = async (req, res) => {
         "../uploads/exercises",
         path.basename(exercise.file_path)
       );
-
       fs.unlink(oldPath, () => {});
     }
 
-    // Auto points from difficulty
-    const difficultyPoints = {
-      FACILE: 3,
-      MOYEN: 4,
-      DIFFICILE: 6,
-    };
+    const difficultyPoints = { FACILE: 3, MOYEN: 4, DIFFICILE: 6 };
 
     const updated = await prisma.exercise.update({
       where: { id },
       data: {
-        title,
-        subject,
-        nb_questions: Number(nb_questions),
-
-        duration_minutes:
-          duration_minutes !== undefined &&
-          duration_minutes !== null &&
-          duration_minutes !== ""
-            ? Number(duration_minutes)
-            : null,
-
-        difficulty,
-        points: difficultyPoints[difficulty],
-
-        description: description ?? null,
-
+        ...(title !== undefined && { title }),
+        ...(subject !== undefined && { subject }),
+        ...(nb_questions !== undefined && { nb_questions: Number(nb_questions) }),
+        ...(duration_minutes !== undefined && {
+          duration_minutes: duration_minutes === null || duration_minutes === ""
+            ? null
+            : Number(duration_minutes),
+        }),
+        ...(difficulty !== undefined && {
+          difficulty,
+          points: difficultyPoints[difficulty],
+        }),
+        ...(description !== undefined && { description }),
         ...(file_path !== undefined && { file_path }),
-
-        status,
-
-        ...(status === "SOUMIS" &&
-          !exercise.submitted_at && {
-            submitted_at: new Date(),
-          }),
+        ...(status !== undefined && { status }),
+        ...(status === "SOUMIS" && !exercise.submitted_at && {
+          submitted_at: new Date(),
+        }),
       },
     });
 
     await audit({
       userId: professorId,
       action: "UPDATE_EXERCISE",
-      entity: "Exercise",
-      entityId: id,
-      details: {
-        updatedFields: Object.keys(req.body),
-        newStatus: status,
-      },
+      targetTable: "exercise",
+      targetId: id,
+      description: `Exercise id ${id} updated`,
+      ipAddress: req.ip,
     });
 
-    return res.status(200).json({
-      success: true,
-      data: updated,
-    });
+    return res.status(200).json({ success: true, data: updated });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
-}; 
-
+};
 
 // DELETE /api/exercises/:id
 const deleteExercise = async (req, res) => {
