@@ -22,6 +22,9 @@ app.use("/api/modules", require("./src/routes/module.route"));
 app.use("/api/candidates", require("./src/routes/candidate.routes"));
 app.use('/api/supervisor', supervisorRoutes);
 app.use("/api/rooms",require("./src/routes/room.routes"))
+  //! chnage comp to sth else lateer
+// app.use("/api/competitions",require("./src/routes/exercise.route"))
+app.use("/api/correction",require("./src/routes/correction.routes"))
 // Error middleware
 
 app.use(require("./src/middleware/error.middleware"));

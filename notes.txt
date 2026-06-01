@@ -1,0 +1,6 @@
+1)should verify token test the activerole 
+2)retest the tehr stuff of te exo,like uploading a file 
+3)add comeption id to all rutes
+4)you cant validate and exo that is already validated 
+5)update points muust sum be 20 
+6) is it 2e+2m+1h ,if so they must have considtent number
