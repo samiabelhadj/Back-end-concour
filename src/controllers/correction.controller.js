@@ -290,7 +290,7 @@ const getAllFinalResults = async (req, res) => {
         anon_code:   anon?.anonym_code,
         final_grade: g.final_grade
       };
-    });
+    }).sort((a, b) => b.final_grade - a.final_grade);
 
     return res.json(result);
   } catch (err) {
