@@ -15,6 +15,61 @@ model academicModule {
   userModule  userModule[]
 }
 
+model anon_grade {
+  id             Int               @id @default(autoincrement())
+  corr_code      String            @unique @db.VarChar(36)
+  created_at     DateTime          @default(now())
+  corrected_1_at DateTime?
+  corrected_2_at DateTime?
+  corrected_3_at DateTime?
+  corrector_1_id Int?
+  corrector_2_id Int?
+  corrector_3_id Int?
+  final_grade    Float?
+  grade_1        Float?
+  grade_2        Float?
+  grade_3        Float?
+  status         anon_grade_status @default(PENDING)
+  anonymisation  anonymisation     @relation(fields: [corr_code], references: [corr_code])
+}
+
+model anonymisation {
+  id                  Int                   @id @default(autoincrement())
+  candidate_id        Int
+  session_id          Int
+  anonym_code         String                @unique @db.VarChar(36)
+  corr_code           String                @unique @db.VarChar(36)
+  created_at          DateTime              @default(now())
+  anon_grade          anon_grade?
+  candidates          candidates            @relation(fields: [candidate_id], references: [id])
+  examSession         examSession           @relation(fields: [session_id], references: [id])
+  correctorAssignment correctorAssignment[]
+  discrepancyAlert    discrepancyAlert?
+
+  @@index([candidate_id])
+  @@index([session_id])
+}
+
+model attendance {
+  id            Int         @id @default(autoincrement())
+  candidate_id  Int
+  supervisor_id Int
+  session_id    Int
+  room_id       Int?
+  is_present    Boolean     @default(false)
+  remarks       String?
+  recorded_at   DateTime    @default(now())
+  candidates    candidates  @relation(fields: [candidate_id], references: [id])
+  examRoom      examRoom?   @relation(fields: [room_id], references: [id])
+  examSession   examSession @relation(fields: [session_id], references: [id])
+  users         users       @relation(fields: [supervisor_id], references: [id])
+
+  @@unique([candidate_id, session_id])
+  @@index([room_id], map: "attendance_room_id_fkey")
+  @@index([session_id], map: "attendance_session_id_fkey")
+  @@index([supervisor_id], map: "attendance_supervisor_id_fkey")
+}
+
 model auditLog {
   id           BigInt   @id @default(autoincrement())
   user_id      Int?
@@ -26,90 +81,33 @@ model auditLog {
   logged_at    DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
 }
 
-model userModule {
-  user_id           Int
-  academicModule_id Int
-  users             users          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_1")
-  academicModule    academicModule @relation(fields: [academicModule_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_2")
+model candidateRoom {
+  candidate_id Int
+  room_id      Int
+  exam_id      Int
+  session_id   Int?
+  place_number Int?
+  candidates   candidates   @relation(fields: [candidate_id], references: [id])
+  exam         exam         @relation(fields: [exam_id], references: [id])
+  examRoom     examRoom     @relation(fields: [room_id], references: [id])
+  examSession  examSession? @relation(fields: [session_id], references: [id])
 
-  @@id([user_id, academicModule_id])
-  @@index([academicModule_id], map: "academicModule_id")
+  @@id([candidate_id, room_id, exam_id])
+  @@index([exam_id], map: "candidateRoom_exam_id_fkey")
+  @@index([room_id], map: "candidateRoom_room_id_fkey")
+  @@index([session_id], map: "candidateRoom_session_id_fkey")
 }
 
-model userRole {
-  id                                 Int             @id @default(autoincrement())
-  user_id                            Int
-  role                               user_role_role?
-  assigned_at                        DateTime        @default(dbgenerated("(now())")) @db.DateTime(0)
-  assigned_by                        Int
-  users_user_role_user_idTousers     users           @relation("user_role_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_role_ibfk_1")
-  users_user_role_assigned_byTousers users           @relation("user_role_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_role_ibfk_2")
-
-  @@unique([user_id, role], map: "user_role_index_0")
-  @@index([assigned_by], map: "assigned_by")
-}
-
-model users {
-  id                                     Int                  @id @default(autoincrement())
-  first_name                             String               @db.VarChar(80)
-  last_name                              String               @db.VarChar(80)
-  email                                  String               @unique(map: "email") @db.VarChar(150)
-  password_hash                          String               @db.VarChar(255)
-  grade                                  users_grade?
-  is_active                              Boolean              @default(false)
-  created_at                             DateTime             @default(dbgenerated("(now())")) @db.DateTime(0)
-  updated_at                             DateTime             @default(dbgenerated("(now())")) @db.DateTime(0)
-  faculty                                String?              @db.VarChar(150)
-  marked_attendance                      attendance[]
-  created_competitions                   competition[]
-  professor_exercises                    exercise[]           @relation("professor_exercises")
-  coordinator_comments                   exerciseComment[]    @relation("coordinator_comments")
-  validated_subjects                     generatedSubject[]   @relation("subject_validator")
-  selected_as_professor                  professorSelection[] @relation("selected_professor")
-  coordinator_selections                 professorSelection[] @relation("selecting_coordinator")
-  room_supervisions                      roomSupervisor[]
-  userModule                             userModule[]
-  user_role_user_role_user_idTousers     userRole[]           @relation("user_role_user_idTousers")
-  user_role_user_role_assigned_byTousers userRole[]           @relation("user_role_assigned_byTousers")
-  assigned_corrections  correctorAssignment[] @relation("assigned_corrector")
-assigned_by_me        correctorAssignment[] @relation("assignment_assigner")
-resolved_alerts       discrepancyAlert[]    @relation("alert_resolver")
-}
-
-model importLogs {
-  id          Int      @id @default(autoincrement())
-  filename    String   @db.VarChar(255)
-  total_lines Int
-  imported    Int
-  errors      Int
-  imported_by Int
-  created_at  DateTime @default(now())
-}
-
-model competition {
-  id                    Int                  @id @default(autoincrement())
-  name                  String               @db.VarChar(200)
-  academic_year         String               @db.VarChar(20)
-  description           String?              @db.Text
-  max_admitted          Int?
-  waiting_list_size     Int?
-  discrepancy_threshold Decimal?             @db.Decimal(5, 2)
-  affectation           Affectation          @default(MANUEL)
-  created_by            Int
-  created_at            DateTime             @default(now())
-  specialty             String?              @db.VarChar(150)
-  status                competition_status   @default(ACTIVE)
-  target_date           DateTime?
-  candidates            candidates[]
-  creator               users                @relation(fields: [created_by], references: [id])
-  competitionRooms      competitionRoom[]
-  exams                 exam[]
-  examSession           examSession[]
-  exercises             exercise[]
-  generatedSubjects     generatedSubject[]
-  professorSelections   professorSelection[]
-  discrepancyAlerts discrepancyAlert[]
-  @@index([created_by], map: "competition_created_by_fkey")
+model candidate_identity {
+  id            Int        @id @default(autoincrement())
+  candidate_id  Int        @unique
+  nom_enc       String     @db.Text
+  prenom_enc    String     @db.Text
+  email_enc     String?    @db.Text
+  telephone_enc String?    @db.Text
+  cin_enc       String?    @db.Text
+  encrypted_at  DateTime   @default(now())
+  candidates    candidates @relation(fields: [candidate_id], references: [id])
 }
 
 model candidates {
@@ -143,11 +141,11 @@ model candidates {
   sheet_origine               String              @default("LMD") @db.VarChar(20)
   statut                      String              @default("INSCRIT") @db.VarChar(20)
   created_at                  DateTime            @default(now())
-  updated_at                  DateTime?           @updatedAt
+  updated_at                  DateTime?
   examRoomId                  Int?
   anonymisation               anonymisation[]
   attendance                  attendance[]
-  candidateRooms              candidateRoom[]
+  candidateRoom               candidateRoom[]
   candidate_identity          candidate_identity?
   competition                 competition         @relation(fields: [competition_id], references: [id])
   examRoom                    examRoom?           @relation(fields: [examRoomId], references: [id])
@@ -156,97 +154,31 @@ model candidates {
   @@index([examRoomId], map: "candidates_examRoomId_fkey")
 }
 
-model roomSupervisor {
-  room_id       Int
-  supervisor_id Int
-  exam_id       Int
-  exam          exam     @relation(fields: [exam_id], references: [id])
-  room          examRoom @relation(fields: [room_id], references: [id])
-  supervisor    users    @relation(fields: [supervisor_id], references: [id])
+model competition {
+  id                    Int                     @id @default(autoincrement())
+  name                  String                  @db.VarChar(200)
+  academic_year         String                  @db.VarChar(20)
+  description           String?                 @db.Text
+  max_admitted          Int?
+  waiting_list_size     Int?
+  discrepancy_threshold Decimal?                @db.Decimal(5, 2)
+  affectation           competition_affectation @default(MANUEL)
+  created_by            Int
+  created_at            DateTime                @default(now())
+  specialty             String?                 @db.VarChar(150)
+  status                competition_status      @default(ACTIVE)
+  target_date           DateTime?
+  candidates            candidates[]
+  users                 users                   @relation(fields: [created_by], references: [id])
+  competitionRoom       competitionRoom[]
+  discrepancyAlert      discrepancyAlert[]
+  exam                  exam[]
+  examSession           examSession[]
+  exercise              exercise[]
+  generatedSubject      generatedSubject[]
+  professorSelection    professorSelection[]
 
-  @@id([room_id, supervisor_id, exam_id])
-  @@index([exam_id], map: "roomSupervisor_exam_id_fkey")
-  @@index([supervisor_id], map: "roomSupervisor_supervisor_id_fkey")
-}
-
-model examSession {
-  id             Int             @id @default(autoincrement())
-  exam_id        Int
-  name           String          @db.VarChar(100)
-  start_time     DateTime
-  end_time       DateTime
-  competition_id Int?
-  anonymisation  anonymisation[]
-  attendance     attendance[]
-  candidateRooms candidateRoom[]
-  competition    competition?    @relation(fields: [competition_id], references: [id])
-  exam           exam            @relation(fields: [exam_id], references: [id])
-
-  @@unique([exam_id, name])
-  @@index([competition_id], map: "examSession_competition_id_fkey")
-}
-
-model attendance {
-  id            Int         @id @default(autoincrement())
-  candidate_id  Int
-  supervisor_id Int
-  session_id    Int
-  room_id       Int?
-  is_present    Boolean     @default(false)
-  remarks       String?
-  recorded_at   DateTime    @default(now())
-  candidate     candidates  @relation(fields: [candidate_id], references: [id])
-  room          examRoom?   @relation(fields: [room_id], references: [id])
-  session       examSession @relation(fields: [session_id], references: [id])
-  supervisor    users       @relation(fields: [supervisor_id], references: [id])
-
-  @@unique([candidate_id, session_id])
-  @@index([room_id], map: "attendance_room_id_fkey")
-  @@index([session_id], map: "attendance_session_id_fkey")
-  @@index([supervisor_id], map: "attendance_supervisor_id_fkey")
-}
-
-model examRoom {
-  id               Int               @id @default(autoincrement())
-  name             String            @db.VarChar(100)
-  capacity         Int
-  block            String?           @db.VarChar(100)
-  status           ExamRoomStatus    @default(AVAILABLE)
-  created_at       DateTime          @default(now())
-  attendance       attendance[]
-  candidateRooms   candidateRoom[]
-  candidates       candidates[]
-  competitionRooms competitionRoom[]
-  equipments       equipments[]
-  roomSupervisor   roomSupervisor[]
-}
-
-model equipments {
-  id          Int      @id @default(autoincrement())
-  room_id     Int
-  name        String   @db.VarChar(100)
-  description String?  @db.Text
-  created_at  DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
-  room        examRoom @relation(fields: [room_id], references: [id])
-
-  @@index([room_id], map: "equipments_room_id_fkey")
-}
-
-model candidateRoom {
-  candidate_id Int
-  room_id      Int
-  exam_id      Int
-  session_id   Int?
-  place_number Int?
-  candidate    candidates   @relation(fields: [candidate_id], references: [id])
-  exam         exam         @relation(fields: [exam_id], references: [id])
-  room         examRoom     @relation(fields: [room_id], references: [id])
-  session      examSession? @relation(fields: [session_id], references: [id])
-
-  @@id([candidate_id, room_id, exam_id])
-  @@index([exam_id], map: "candidateRoom_exam_id_fkey")
-  @@index([room_id], map: "candidateRoom_room_id_fkey")
-  @@index([session_id], map: "candidateRoom_session_id_fkey")
+  @@index([created_by], map: "competition_created_by_fkey")
 }
 
 model competitionRoom {
@@ -260,63 +192,124 @@ model competitionRoom {
   @@index([room_id], map: "competitionRoom_room_id_fkey")
 }
 
+model correctorAssignment {
+  id                                            Int           @id @default(autoincrement())
+  corr_code                                     String
+  corrector_id                                  Int
+  round                                         Int
+  assigned_at                                   DateTime      @default(now())
+  assigned_by                                   Int?
+  users_correctorAssignment_assigned_byTousers  users?        @relation("correctorAssignment_assigned_byTousers", fields: [assigned_by], references: [id])
+  anonymisation                                 anonymisation @relation(fields: [corr_code], references: [corr_code])
+  users_correctorAssignment_corrector_idTousers users         @relation("correctorAssignment_corrector_idTousers", fields: [corrector_id], references: [id])
+
+  @@unique([corr_code, round])
+  @@index([assigned_by], map: "correctorAssignment_assigned_by_fkey")
+  @@index([corrector_id])
+}
+
+model discrepancyAlert {
+  id               Int                          @id @default(autoincrement())
+  corr_code        String                       @unique
+  competition_id   Int
+  corrector1_grade Float
+  corrector2_grade Float
+  discrepancy      Float
+  status           discrepancyAlert_status      @default(PENDING)
+  resolution       discrepancyAlert_resolution?
+  resolved_by      Int?
+  resolved_at      DateTime?
+  created_at       DateTime                     @default(now())
+  competition      competition                  @relation(fields: [competition_id], references: [id])
+  anonymisation    anonymisation                @relation(fields: [corr_code], references: [corr_code])
+  users            users?                       @relation(fields: [resolved_by], references: [id])
+
+  @@index([competition_id], map: "discrepancyAlert_competition_id_fkey")
+  @@index([resolved_by], map: "discrepancyAlert_resolved_by_fkey")
+}
+
+model equipments {
+  id          Int      @id @default(autoincrement())
+  room_id     Int
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  created_at  DateTime @default(dbgenerated("(now())")) @db.DateTime(0)
+  examRoom    examRoom @relation(fields: [room_id], references: [id])
+
+  @@index([room_id], map: "equipments_room_id_fkey")
+}
+
 model exam {
-  id              Int              @id @default(autoincrement())
-  competition_id  Int
-  name            String           @db.VarChar(200)
-  description     String?          @db.Text
-  coefficient     Float?
-  duration        Int?
-  created_at      DateTime         @default(now())
-  candidateRooms  candidateRoom[]
-  competition     competition      @relation(fields: [competition_id], references: [id])
-  examSessions    examSession[]
-  roomSupervisors roomSupervisor[]
+  id             Int              @id @default(autoincrement())
+  competition_id Int
+  name           String           @db.VarChar(200)
+  description    String?          @db.Text
+  coefficient    Float?
+  duration       Int?
+  created_at     DateTime         @default(now())
+  candidateRoom  candidateRoom[]
+  competition    competition      @relation(fields: [competition_id], references: [id])
+  examSession    examSession[]
+  roomSupervisor roomSupervisor[]
 
   @@index([competition_id], map: "exam_competition_id_fkey")
 }
 
-model professorSelection {
-  id             Int         @id @default(autoincrement())
-  competition_id Int
-  professor_id   Int
-  selected_by    Int
-  deadline       DateTime
-  selected_at    DateTime    @default(now())
-  exercises      exercise[]
-  competition    competition @relation(fields: [competition_id], references: [id])
-  professor      users       @relation("selected_professor", fields: [professor_id], references: [id])
-  selector       users       @relation("selecting_coordinator", fields: [selected_by], references: [id])
+model examRoom {
+  id              Int               @id @default(autoincrement())
+  name            String            @db.VarChar(100)
+  capacity        Int
+  block           String?           @db.VarChar(100)
+  status          examRoom_status   @default(AVAILABLE)
+  created_at      DateTime          @default(now())
+  attendance      attendance[]
+  candidateRoom   candidateRoom[]
+  candidates      candidates[]
+  competitionRoom competitionRoom[]
+  equipments      equipments[]
+  roomSupervisor  roomSupervisor[]
+}
 
-  @@unique([competition_id, professor_id])
-  @@index([competition_id])
-  @@index([professor_id])
-  @@index([selected_by])
+model examSession {
+  id             Int             @id @default(autoincrement())
+  exam_id        Int
+  name           String          @db.VarChar(100)
+  start_time     DateTime
+  end_time       DateTime
+  competition_id Int?
+  anonymisation  anonymisation[]
+  attendance     attendance[]
+  candidateRoom  candidateRoom[]
+  competition    competition?    @relation(fields: [competition_id], references: [id])
+  exam           exam            @relation(fields: [exam_id], references: [id])
+
+  @@unique([exam_id, name])
+  @@index([competition_id], map: "examSession_competition_id_fkey")
 }
 
 model exercise {
-  id               Int                 @id @default(autoincrement())
-  exercise_code    String              @unique @db.VarChar(20)
-  competition_id   Int
-  professor_id     Int
-  selection_id     Int?
-  title            String              @db.VarChar(200)
-  subject          String?             @db.VarChar(150)
-  points           Float
-  nb_questions     Int?
-  duration_minutes Int?
-  difficulty       ExerciseDifficulty  @default(MOYEN)
-  description      String?             @db.LongText
-  file_path        String?             @db.VarChar(255)
-  status           ExerciseStatus      @default(BROUILLON)
-  submitted_at     DateTime?
-  created_at       DateTime            @default(now())
-  updated_at       DateTime            @updatedAt
-  competition      competition         @relation(fields: [competition_id], references: [id])
-  professor        users               @relation("professor_exercises", fields: [professor_id], references: [id])
-  selection        professorSelection? @relation(fields: [selection_id], references: [id])
-  comment          exerciseComment?
-  subjectItems     subjectExercise[]
+  id                 Int                 @id @default(autoincrement())
+  exercise_code      String              @unique @db.VarChar(20)
+  competition_id     Int
+  professor_id       Int
+  selection_id       Int?
+  title              String              @db.VarChar(200)
+  subject            String?             @db.VarChar(150)
+  points             Float
+  nb_questions       Int?
+  duration_minutes   Int?
+  difficulty         exercise_difficulty @default(MOYEN)
+  description        String?             @db.LongText
+  file_path          String?             @db.VarChar(255)
+  status             exercise_status     @default(BROUILLON)
+  submitted_at       DateTime?
+  created_at         DateTime            @default(now())
+  updated_at         DateTime
+  competition        competition         @relation(fields: [competition_id], references: [id])
+  users              users               @relation(fields: [professor_id], references: [id])
+  professorSelection professorSelection? @relation(fields: [selection_id], references: [id])
+  exerciseComment    exerciseComment?
+  subjectExercise    subjectExercise[]
 
   @@index([competition_id])
   @@index([professor_id])
@@ -329,128 +322,135 @@ model exerciseComment {
   coordinator_id Int
   comment        String   @db.Text
   created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  coordinator    users    @relation("coordinator_comments", fields: [coordinator_id], references: [id])
+  updated_at     DateTime
+  users          users    @relation(fields: [coordinator_id], references: [id])
   exercise       exercise @relation(fields: [exercise_id], references: [id])
 
   @@index([coordinator_id])
 }
 
 model generatedSubject {
-  id             Int               @id @default(autoincrement())
-  competition_id Int
-  index          Int
-  total_points   Float
-  pdf_path       String?           @db.VarChar(255)
-  status         SubjectStatus     @default(DRAFT)
-  generated_at   DateTime          @default(now())
-  validated_by   Int?
-  validated_at   DateTime?
-  competition    competition       @relation(fields: [competition_id], references: [id])
-  validator      users?            @relation("subject_validator", fields: [validated_by], references: [id])
-  exercises      subjectExercise[]
+  id              Int                     @id @default(autoincrement())
+  competition_id  Int
+  index           Int
+  total_points    Float
+  pdf_path        String?                 @db.VarChar(255)
+  status          generatedSubject_status @default(DRAFT)
+  generated_at    DateTime                @default(now())
+  validated_by    Int?
+  validated_at    DateTime?
+  competition     competition             @relation(fields: [competition_id], references: [id])
+  users           users?                  @relation(fields: [validated_by], references: [id])
+  subjectExercise subjectExercise[]
 
   @@unique([competition_id, index])
   @@index([competition_id])
   @@index([validated_by], map: "generatedSubject_validated_by_fkey")
 }
 
+model importLogs {
+  id          Int      @id @default(autoincrement())
+  filename    String   @db.VarChar(255)
+  total_lines Int
+  imported    Int
+  errors      Int
+  imported_by Int
+  created_at  DateTime @default(now())
+}
+
+model professorSelection {
+  id                                           Int         @id @default(autoincrement())
+  competition_id                               Int
+  professor_id                                 Int
+  selected_by                                  Int
+  deadline                                     DateTime
+  selected_at                                  DateTime    @default(now())
+  exercise                                     exercise[]
+  competition                                  competition @relation(fields: [competition_id], references: [id])
+  users_professorSelection_professor_idTousers users       @relation("professorSelection_professor_idTousers", fields: [professor_id], references: [id])
+  users_professorSelection_selected_byTousers  users       @relation("professorSelection_selected_byTousers", fields: [selected_by], references: [id])
+
+  @@unique([competition_id, professor_id])
+  @@index([competition_id])
+  @@index([professor_id])
+  @@index([selected_by])
+}
+
+model roomSupervisor {
+  room_id       Int
+  supervisor_id Int
+  exam_id       Int
+  exam          exam     @relation(fields: [exam_id], references: [id])
+  examRoom      examRoom @relation(fields: [room_id], references: [id])
+  users         users    @relation(fields: [supervisor_id], references: [id])
+
+  @@id([room_id, supervisor_id, exam_id])
+  @@index([exam_id], map: "roomSupervisor_exam_id_fkey")
+  @@index([supervisor_id], map: "roomSupervisor_supervisor_id_fkey")
+}
+
 model subjectExercise {
-  subject_id  Int
-  exercise_id Int
-  order_index Int
-  exercise    exercise         @relation(fields: [exercise_id], references: [id])
-  subject     generatedSubject @relation(fields: [subject_id], references: [id])
+  subject_id       Int
+  exercise_id      Int
+  order_index      Int
+  exercise         exercise         @relation(fields: [exercise_id], references: [id])
+  generatedSubject generatedSubject @relation(fields: [subject_id], references: [id])
 
   @@id([subject_id, exercise_id])
   @@index([exercise_id])
 }
 
-model anon_grade {
-  id             Int               @id @default(autoincrement())
-  corr_code      String            @unique @db.VarChar(36)
-  created_at     DateTime          @default(now())
-  corrected_1_at DateTime?
-  corrected_2_at DateTime?
-  corrected_3_at DateTime?
-  corrector_1_id Int?
-  corrector_2_id Int?
-  corrector_3_id Int?
-  final_grade    Float?
-  grade_1        Float?
-  grade_2        Float?
-  grade_3        Float?
-  status         anon_grade_status @default(PENDING)
-  anonymisation  anonymisation     @relation(fields: [corr_code], references: [corr_code])
+model userModule {
+  user_id           Int
+  academicModule_id Int
+  users             users          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_1")
+  academicModule    academicModule @relation(fields: [academicModule_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "userModule_ibfk_2")
+
+  @@id([user_id, academicModule_id])
+  @@index([academicModule_id], map: "academicModule_id")
 }
 
-model anonymisation {
-  id           Int         @id @default(autoincrement())
-  candidate_id Int
-  session_id   Int
-  anonym_code  String      @unique @db.VarChar(36)
-  corr_code    String      @unique @db.VarChar(36)
-  created_at   DateTime    @default(now())
-  anon_grade   anon_grade?
-  candidates   candidates  @relation(fields: [candidate_id], references: [id])
-  examSession  examSession @relation(fields: [session_id], references: [id])
- 
-    correctorAssignment correctorAssignment[] // ADD THIS
-  discrepancyAlert    discrepancyAlert?     // ADD THIS
+model userRole {
+  id                                Int            @id @default(autoincrement())
+  user_id                           Int
+  role                              userRole_role?
+  assigned_at                       DateTime       @default(dbgenerated("(now())")) @db.DateTime(0)
+  assigned_by                       Int
+  users_userRole_user_idTousers     users          @relation("userRole_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_role_ibfk_1")
+  users_userRole_assigned_byTousers users          @relation("userRole_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "user_role_ibfk_2")
 
-  @@index([candidate_id])
-  @@index([session_id])
+  @@unique([user_id, role], map: "user_role_index_0")
+  @@index([assigned_by], map: "assigned_by")
 }
 
-model candidate_identity {
-  id            Int        @id @default(autoincrement())
-  candidate_id  Int        @unique
-  nom_enc       String     @db.Text
-  prenom_enc    String     @db.Text
-  email_enc     String?    @db.Text
-  telephone_enc String?    @db.Text
-  cin_enc       String?    @db.Text
-  encrypted_at  DateTime   @default(now())
-  candidates    candidates @relation(fields: [candidate_id], references: [id])
+model users {
+  id                                                          Int                   @id @default(autoincrement())
+  first_name                                                  String                @db.VarChar(80)
+  last_name                                                   String                @db.VarChar(80)
+  email                                                       String                @unique(map: "email") @db.VarChar(150)
+  password_hash                                               String                @db.VarChar(255)
+  grade                                                       users_grade?
+  is_active                                                   Boolean               @default(false)
+  created_at                                                  DateTime              @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at                                                  DateTime              @default(dbgenerated("(now())")) @db.DateTime(0)
+  faculty                                                     String?               @db.VarChar(150)
+  attendance                                                  attendance[]
+  competition                                                 competition[]
+  correctorAssignment_correctorAssignment_assigned_byTousers  correctorAssignment[] @relation("correctorAssignment_assigned_byTousers")
+  correctorAssignment_correctorAssignment_corrector_idTousers correctorAssignment[] @relation("correctorAssignment_corrector_idTousers")
+  discrepancyAlert                                            discrepancyAlert[]
+  exercise                                                    exercise[]
+  exerciseComment                                             exerciseComment[]
+  generatedSubject                                            generatedSubject[]
+  professorSelection_professorSelection_professor_idTousers   professorSelection[]  @relation("professorSelection_professor_idTousers")
+  professorSelection_professorSelection_selected_byTousers    professorSelection[]  @relation("professorSelection_selected_byTousers")
+  roomSupervisor                                              roomSupervisor[]
+  userModule                                                  userModule[]
+  userRole_userRole_user_idTousers                            userRole[]            @relation("userRole_user_idTousers")
+  userRole_userRole_assigned_byTousers                        userRole[]            @relation("userRole_assigned_byTousers")
 }
 
-
-model correctorAssignment {
-  id           Int      @id @default(autoincrement())
-  corr_code    String
-  corrector_id Int
-  round        Int
-  assigned_at  DateTime @default(now())
-  assigned_by  Int?
-
-  anonymisation anonymisation @relation(fields: [corr_code], references: [corr_code])
-  corrector     users         @relation("assigned_corrector", fields: [corrector_id], references: [id])
-  assigner      users?        @relation("assignment_assigner", fields: [assigned_by], references: [id])
-
-  @@unique([corr_code, round])
-  @@index([corrector_id])
-}
-
-model discrepancyAlert {
-  id               Int                    @id @default(autoincrement())
-  corr_code        String                 @unique
-  competition_id   Int
-  corrector1_grade Float
-  corrector2_grade Float
-  discrepancy      Float
-  status           DiscrepancyStatus      @default(PENDING)
-  resolution       DiscrepancyResolution?
-  resolved_by      Int?
-  resolved_at      DateTime?
-  created_at       DateTime               @default(now())
-
-  anonymisation anonymisation @relation(fields: [corr_code], references: [corr_code])
-  competition   competition   @relation(fields: [competition_id], references: [id])
-  resolver      users?        @relation("alert_resolver", fields: [resolved_by], references: [id])
-}
-
-
-enum user_role_role {
+enum userRole_role {
   admin
   professor_creator
   corrector
@@ -460,24 +460,7 @@ enum user_role_role {
   anonymat
 }
 
-enum users_grade {
-  MCB
-  MCA
-  professeur
-  IT_engineer @map("IT engineer")
-}
-
-
-enum Affectation {
-  MANUEL
-  AUTOMATIQUE
-}
-enum CompStatus {
-  ACTIVE
-  FINISHED
-}
-
-enum ExamRoomStatus {
+enum examRoom_status {
   AVAILABLE
   OCCUPIED
   RESERVED
@@ -485,28 +468,43 @@ enum ExamRoomStatus {
   CLOSED
 }
 
-enum competition_status {
-  ACTIVE
-  FINISHED
+enum generatedSubject_status {
+  DRAFT
+  OFFICIAL
+  REJECTED
 }
 
-enum ExerciseDifficulty {
+enum users_grade {
+  MCB
+  MCA
+  professeur
+  IT_engineer @map("IT engineer")
+}
+
+enum discrepancyAlert_status {
+  PENDING
+  RESOLVED
+}
+
+enum competition_affectation {
+  MANUEL
+  AUTOMATIQUE
+}
+
+enum discrepancyAlert_resolution {
+  MANUAL
+  AUTO
+}
+
+enum exercise_difficulty {
   FACILE
   MOYEN
   DIFFICILE
 }
 
-enum ExerciseStatus {
-  BROUILLON
-  SOUMIS
-  EN_REVISION
-  VALIDE
-}
-
-enum SubjectStatus {
-  DRAFT
-  OFFICIAL
-  REJECTED
+enum competition_status {
+  ACTIVE
+  FINISHED
 }
 
 enum anon_grade_status {
@@ -517,60 +515,9 @@ enum anon_grade_status {
   COMPLETED
 }
 
-enum DiscrepancyStatus {
-  PENDING
-  RESOLVED
-}
-
-enum DiscrepancyResolution {
-  MANUAL
-  AUTO
-}
-model equipments {
-  id          Int       @id @default(autoincrement())
-  room_id     Int
-  name        String    @db.VarChar(100)
-  description String?   @db.Text
-  created_at  DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
-  room        examRoom @relation(fields: [room_id], references: [id])
-}
-
-model candidateRoom {
-  candidate_id Int
-  room_id      Int
-  exam_id      Int
-  session_id   Int?
-  place_number Int?
-
-  candidate candidates @relation(fields: [candidate_id], references: [id])
-  room      examRoom  @relation(fields: [room_id], references: [id])
-  exam      exam       @relation(fields: [exam_id], references: [id])
-  session   examSession? @relation(fields: [session_id], references: [id])
-
-  @@id([candidate_id, room_id, exam_id])
-}
-
-model competitionRoom {
-  competition_id  Int
-  room_id         Int
-  places_occupied Int         @default(0)
-  competition     competition @relation(fields: [competition_id], references: [id])
-  examRoom       examRoom   @relation(fields: [room_id], references: [id])
-
-  @@id([competition_id, room_id])
-}
-
-model exam {
-  id             Int      @id @default(autoincrement())
-  competition_id Int
-  name           String   @db.VarChar(200) // "Algorithms", "AI", "English"
-  description    String?  @db.Text
-  coefficient    Float? // weight of this exam in final score
-  duration       Int? // duration in minutes
-  created_at     DateTime @default(now())
-
-  competition     competition       @relation(fields: [competition_id], references: [id])
-  examSessions    examSession[]
-  candidateRooms  candidateRoom[]
-  roomSupervisors roomSupervisor[]
+enum exercise_status {
+  BROUILLON
+  SOUMIS
+  EN_REVISION
+  VALIDE
 }
