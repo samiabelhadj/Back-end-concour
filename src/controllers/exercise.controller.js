@@ -82,13 +82,14 @@ const selectProfessors = async (req, res) => {
     );
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "SELECT_PROFESSORS",
-      entity: "ProfessorSelection",
-      entityId: competition_id,
-      details: { competition_id, professorIds, deadline },
-    });
+     await audit({
+         userId: coordinatorId,
+         action: "SELECT_PROFESSORS",
+         targetTable: "professorSelection",
+         targetId: competition_id,
+         description: `Selected ${professorIds.length} professors for competition ${competition_id}`,
+         ipAddress: req.ip,
+       });
 
     return res.status(201).json({
       success: true,
@@ -134,7 +135,6 @@ const getSelectedProfessors = async (req, res) => {
 // EXERCISE CRUD (Professor side)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// POST /api/competitions/:competition_id/exercises
 const createExercise = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
@@ -143,7 +143,6 @@ const createExercise = async (req, res) => {
     const {
       title,
       subject,
-      points,
       nb_questions,
       duration_minutes,
       difficulty,
@@ -156,17 +155,26 @@ const createExercise = async (req, res) => {
       : null;
 
     if (isNaN(competition_id) || competition_id <= 0) {
-      return res.status(400).json({ success: false, message: "Invalid competition_id" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid competition_id",
+      });
     }
-    if (!title || !points) {
-      return res.status(400).json({ success: false, message: "title and points are required" });
+
+    if (!title || !subject || !difficulty || !file_path) {
+      return res.status(400).json({
+        success: false,
+        message: "title, subject, difficulty and file are required",
+      });
     }
-    if (difficulty && !VALID_DIFFICULTIES.includes(difficulty)) {
+
+    if (!VALID_DIFFICULTIES.includes(difficulty)) {
       return res.status(400).json({
         success: false,
         message: `Invalid difficulty. Valid values: ${VALID_DIFFICULTIES.join(", ")}`,
       });
     }
+
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -176,17 +184,28 @@ const createExercise = async (req, res) => {
 
     const selection = await prisma.professorSelection.findUnique({
       where: {
-        competition_id_professor_id: { competition_id, professor_id: professorId },
+        competition_id_professor_id: {
+          competition_id,
+          professor_id: professorId,
+        },
       },
     });
+
     if (!selection) {
-      return res.status(403).json({ success: false, message: "You are not selected for this competition" });
+      return res.status(403).json({
+        success: false,
+        message: "You are not selected for this competition",
+      });
     }
 
     if (status === "SOUMIS" && new Date() > selection.deadline) {
-      return res.status(403).json({ success: false, message: "Submission deadline has passed" });
+      return res.status(403).json({
+        success: false,
+        message: "Submission deadline has passed",
+      });
     }
 
+    const difficultyPoints = { FACILE: 3, MOYEN: 4, DIFFICILE: 6 };
     const exercise_code = await generateExerciseCode(competition_id);
 
     const exercise = await prisma.exercise.create({
@@ -196,11 +215,11 @@ const createExercise = async (req, res) => {
         professor_id: professorId,
         selection_id: selection.id,
         title,
-        subject: subject ?? null,
-        points: Number(points),
+        subject,
+        points: difficultyPoints[difficulty],
         nb_questions: nb_questions ? Number(nb_questions) : null,
         duration_minutes: duration_minutes ? Number(duration_minutes) : null,
-        difficulty: difficulty ?? "MOYEN",
+        difficulty,
         description: description ?? null,
         file_path,
         status,
@@ -208,32 +227,42 @@ const createExercise = async (req, res) => {
       },
     });
 
-    // AUDIT LOG
     await audit({
       userId: professorId,
       action: "CREATE_EXERCISE",
-      entity: "Exercise",
-      entityId: exercise.id,
-      details: { exercise_code, competition_id, title, status },
+      targetTable: "exercise",
+      targetId: exercise.id,
+      description: `Exercise "${title}" created for competition ${competition_id} with status ${status}`,
+      ipAddress: req.ip,
     });
 
     return res.status(201).json({ success: true, data: exercise });
   } catch (error) {
     if (error.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({ success: false, message: "File too large. Max 25MB." });
+      return res.status(400).json({
+        success: false,
+        message: "File too large. Max 25MB.",
+      });
     }
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// PUT /api/competitions/exercises/:id
 const updateExercise = async (req, res) => {
   try {
     const id = Number(req.params.id);
     const professorId = req.user.userId;
-    const { title, subject, points, nb_questions, duration_minutes, difficulty, description, status } = req.body;
 
-    // FIX: file_path is undefined (not null) so the spread below won't overwrite the DB value unless a new file was uploaded
+    const {
+      title,
+      subject,
+      nb_questions,
+      duration_minutes,
+      difficulty,
+      description,
+      status,
+    } = req.body;
+
     const file_path = req.file
       ? `/uploads/exercises/${req.file.filename}`
       : undefined;
@@ -241,6 +270,8 @@ const updateExercise = async (req, res) => {
     if (isNaN(id) || id <= 0) {
       return res.status(400).json({ success: false, message: "Invalid exercise id" });
     }
+
+    // only validate difficulty and status if they were sent
     if (difficulty && !VALID_DIFFICULTIES.includes(difficulty)) {
       return res.status(400).json({
         success: false,
@@ -248,15 +279,28 @@ const updateExercise = async (req, res) => {
       });
     }
 
+    if (status && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Valid values: ${VALID_STATUSES.join(", ")}`,
+      });
+    }
+
     const exercise = await prisma.exercise.findUnique({ where: { id } });
+
     if (!exercise) {
       return res.status(404).json({ success: false, message: "Exercise not found" });
     }
+
     if (exercise.professor_id !== professorId) {
       return res.status(403).json({ success: false, message: "Not your exercise" });
     }
+
     if (!["BROUILLON", "EN_REVISION"].includes(exercise.status)) {
-      return res.status(403).json({ success: false, message: "Cannot edit a submitted or validated exercise" });
+      return res.status(403).json({
+        success: false,
+        message: "Cannot edit a submitted or validated exercise",
+      });
     }
 
     if (status === "SOUMIS") {
@@ -264,38 +308,55 @@ const updateExercise = async (req, res) => {
         where: { id: exercise.selection_id },
       });
       if (selection && new Date() > selection.deadline) {
-        return res.status(403).json({ success: false, message: "Submission deadline has passed" });
+        return res.status(403).json({
+          success: false,
+          message: "Submission deadline has passed",
+        });
       }
     }
 
     if (req.file && exercise.file_path) {
-      const oldPath = path.join(__dirname, "../uploads/exercises", path.basename(exercise.file_path));
+      const oldPath = path.join(
+        __dirname,
+        "../uploads/exercises",
+        path.basename(exercise.file_path)
+      );
       fs.unlink(oldPath, () => {});
     }
+
+    const difficultyPoints = { FACILE: 3, MOYEN: 4, DIFFICILE: 6 };
 
     const updated = await prisma.exercise.update({
       where: { id },
       data: {
         ...(title !== undefined && { title }),
         ...(subject !== undefined && { subject }),
-        ...(points !== undefined && { points: Number(points) }),
         ...(nb_questions !== undefined && { nb_questions: Number(nb_questions) }),
-        ...(duration_minutes !== undefined && { duration_minutes: Number(duration_minutes) }),
-        ...(difficulty !== undefined && { difficulty }),
+        ...(duration_minutes !== undefined && {
+          duration_minutes: duration_minutes === null || duration_minutes === ""
+            ? null
+            : Number(duration_minutes),
+        }),
+        ...(difficulty !== undefined && {
+          difficulty,
+          points: difficultyPoints[difficulty],
+        }),
         ...(description !== undefined && { description }),
         ...(file_path !== undefined && { file_path }),
         ...(status !== undefined && { status }),
-        ...(status === "SOUMIS" && !exercise.submitted_at && { submitted_at: new Date() }),
+        ...(status === "SOUMIS" && !exercise.submitted_at && {
+          submitted_at: new Date(),
+        }),
       },
     });
 
-    // AUDIT LOG
     await audit({
       userId: professorId,
       action: "UPDATE_EXERCISE",
-      entity: "Exercise",
-      entityId: id,
-      details: { updatedFields: Object.keys(req.body), newStatus: status },
+      targetTable: "exercise",
+      targetId: id,
+      description: `Exercise id ${id} updated`,
+      ipAddress: req.ip,
     });
 
     return res.status(200).json({ success: true, data: updated });
@@ -333,12 +394,13 @@ const deleteExercise = async (req, res) => {
     await prisma.exercise.delete({ where: { id } });
 
     // AUDIT LOG
-    await audit({
+     await audit({
       userId: professorId,
       action: "DELETE_EXERCISE",
-      entity: "Exercise",
-      entityId: id,
-      details: { title: exercise.title, competition_id: exercise.competition_id },
+      targetTable: "exercise",
+      targetId: id,
+      description: `Exercise "${exercise.title}" deleted from competition ${exercise.competition_id}`,
+      ipAddress: req.ip,
     });
 
     return res.status(200).json({ success: true, message: "Exercise deleted successfully" });
@@ -461,13 +523,14 @@ const validateExercise = async (req, res) => {
     });
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "VALIDATE_EXERCISE",
-      entity: "Exercise",
-      entityId: id,
-      details: { previousStatus: exercise.status },
-    });
+      await audit({
+         userId: coordinatorId,
+         action: "VALIDATE_EXERCISE",
+         targetTable: "exercise",
+         targetId: id,
+         description: `Exercise id ${id} validated, previous status was ${exercise.status}`,
+         ipAddress: req.ip,
+       });
 
     return res.status(200).json({ success: true, message: "Exercise validated successfully", data: updated });
   } catch (error) {
@@ -508,13 +571,14 @@ const requestRevision = async (req, res) => {
     ]);
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "REQUEST_REVISION",
-      entity: "Exercise",
-      entityId: id,
-      details: { comment, previousStatus: exercise.status },
-    });
+      await audit({
+  userId: coordinatorId,
+  action: "REQUEST_REVISION",
+  targetTable: "exercise",
+  targetId: id,
+  description: `Revision requested for exercise id ${id}: "${comment}"`,
+  ipAddress: req.ip,
+});
 
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
@@ -628,14 +692,14 @@ const generateSubjects = async (req, res) => {
     }
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "GENERATE_SUBJECTS",
-      entity: "GeneratedSubject",
-      entityId: competition_id,
-      details: { competition_id, subjectIds: generatedSubjects.map((s) => s.id) },
-    });
-
+     await audit({
+       userId: coordinatorId,
+       action: "GENERATE_SUBJECTS",
+       targetTable: "generatedSubject",
+       targetId: competition_id,
+       description: `5 subjects generated for competition ${competition_id}`,
+       ipAddress: req.ip,
+     });
     return res.status(201).json({
       success: true,
       message: "5 subjects generated successfully",
@@ -764,13 +828,14 @@ const validateSubject = async (req, res) => {
     });
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "VALIDATE_SUBJECT",
-      entity: "GeneratedSubject",
-      entityId: subject_id,
-      details: { competition_id, pdf_path },
-    });
+   await audit({
+       userId: coordinatorId,
+       action: "VALIDATE_SUBJECT",
+       targetTable: "generatedSubject",
+       targetId: subject_id,
+       description: `Subject ${subject_id} validated as official for competition ${competition_id}, PDF: ${pdf_path}`,
+       ipAddress: req.ip,
+     });
 
     return res.status(200).json({
       success: true,
