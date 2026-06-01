@@ -22,13 +22,10 @@ app.use("/api/admin", require("./src/routes/admin.routes"));
 app.use("/api/auth", require("./src/routes/auth.route"));
 app.use("/api/modules", require("./src/routes/module.routes"));
 app.use("/api/candidates", require("./src/routes/candidate.routes"));
-
-
-
 app.use('/api/supervisor', supervisorRoutes);
-// Remplace le conflit par :
 app.use("/api/rooms", require("./src/routes/room.routes"))
-app.use('/api/competitions', require("./src/routes/competition.routes"));
+app.use("/api/competition",require("./src/routes/exercise.route"))
+app.use('/api/correction', require("./src/routes/correction.routes"));
 // Error middleware
 
 app.use(require("./src/middleware/error.middleware"));

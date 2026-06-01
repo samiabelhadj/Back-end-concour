@@ -24,6 +24,8 @@ exports.verifyToken = (req, res, next) => {
   }
 
   try {
+
+
     // verify signature + expiry
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
 
@@ -52,6 +54,7 @@ exports.verifyToken = (req, res, next) => {
 //   router.post('/users', verifyToken, requireRole('admin'), controller)
 //   router.get('/phases', verifyToken, requireRole('admin','coordinator'), controller)
 // ─────────────────────────────────────────
+
 exports.requireRole = (...roles) => {
   return (req, res, next) => {
     // req.user is set by verifyToken above
@@ -145,5 +148,26 @@ exports.verifyTokenAndUser = async (req, res, next) => {
       return res.status(401).json({ message: 'Token expired. Please log in again.' })
     }
     return res.status(401).json({ message: 'Invalid token.' })
+  }
+}
+
+
+exports.requireActiveRole = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !req.user.activeRole) {
+      return res.status(403).json({
+        message: 'Access denied. No active role found.'
+      })
+    }
+
+    const hasActiveRole = roles.includes(req.user.activeRole)
+
+    if (!hasActiveRole) {
+      return res.status(403).json({
+        message: `Access denied. Active role must be: ${roles.join(' or ')}.`
+      })
+    }
+
+    next()
   }
 }
