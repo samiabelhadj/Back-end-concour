@@ -4,3 +4,5 @@
 4)you cant validate and exo that is already validated 
 5)update points muust sum be 20 
 6) is it 2e+2m+1h ,if so they must have considtent number
+7) add audit and pv 
+8)add sth like when competion is finished they click on unlick all 

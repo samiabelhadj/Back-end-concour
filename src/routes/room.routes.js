@@ -16,6 +16,7 @@ const {
   removeSupervisor,
   resetAffectation,
   getAvailableRooms,
+  unlinkAllRoomsFromCompetition
 } = require("../controllers/room.controllers");
 
 const {verifyToken,requireRole} =require("../middleware/auth.middleware")
@@ -45,6 +46,7 @@ router.delete("/:id", deleteRoom);                           // DELETE /api/room
 // ── Link / unlink room to competition ───────────────────────────────────────
 router.post("/:id/competitions", linkRoomToCompetition);     // POST /api/rooms/1/competitions
 router.delete("/:id/competitions/:competition_id", unlinkRoomFromCompetition); // DELETE /api/rooms/1/competitions/2
+router.delete("/competitions/:competition_id/all", unlinkAllRoomsFromCompetition); // DELETE /api/rooms/1/competitions/2
 
 // ── Emargement ───────────────────────────────────────────────────────────────
 router.get("/:room_id/emargement", getEmargement);           // GET  /api/rooms/1/emargement?exam_id=1
