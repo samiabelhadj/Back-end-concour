@@ -82,13 +82,14 @@ const selectProfessors = async (req, res) => {
     );
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "SELECT_PROFESSORS",
-      entity: "ProfessorSelection",
-      entityId: competition_id,
-      details: { competition_id, professorIds, deadline },
-    });
+     await audit({
+         userId: coordinatorId,
+         action: "SELECT_PROFESSORS",
+         targetTable: "professorSelection",
+         targetId: competition_id,
+         description: `Selected ${professorIds.length} professors for competition ${competition_id}`,
+         ipAddress: req.ip,
+       });
 
     return res.status(201).json({
       success: true,
@@ -393,12 +394,13 @@ const deleteExercise = async (req, res) => {
     await prisma.exercise.delete({ where: { id } });
 
     // AUDIT LOG
-    await audit({
+     await audit({
       userId: professorId,
       action: "DELETE_EXERCISE",
-      entity: "Exercise",
-      entityId: id,
-      details: { title: exercise.title, competition_id: exercise.competition_id },
+      targetTable: "exercise",
+      targetId: id,
+      description: `Exercise "${exercise.title}" deleted from competition ${exercise.competition_id}`,
+      ipAddress: req.ip,
     });
 
     return res.status(200).json({ success: true, message: "Exercise deleted successfully" });
@@ -521,13 +523,14 @@ const validateExercise = async (req, res) => {
     });
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "VALIDATE_EXERCISE",
-      entity: "Exercise",
-      entityId: id,
-      details: { previousStatus: exercise.status },
-    });
+      await audit({
+         userId: coordinatorId,
+         action: "VALIDATE_EXERCISE",
+         targetTable: "exercise",
+         targetId: id,
+         description: `Exercise id ${id} validated, previous status was ${exercise.status}`,
+         ipAddress: req.ip,
+       });
 
     return res.status(200).json({ success: true, message: "Exercise validated successfully", data: updated });
   } catch (error) {
@@ -568,13 +571,14 @@ const requestRevision = async (req, res) => {
     ]);
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "REQUEST_REVISION",
-      entity: "Exercise",
-      entityId: id,
-      details: { comment, previousStatus: exercise.status },
-    });
+      await audit({
+  userId: coordinatorId,
+  action: "REQUEST_REVISION",
+  targetTable: "exercise",
+  targetId: id,
+  description: `Revision requested for exercise id ${id}: "${comment}"`,
+  ipAddress: req.ip,
+});
 
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
@@ -688,14 +692,14 @@ const generateSubjects = async (req, res) => {
     }
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "GENERATE_SUBJECTS",
-      entity: "GeneratedSubject",
-      entityId: competition_id,
-      details: { competition_id, subjectIds: generatedSubjects.map((s) => s.id) },
-    });
-
+     await audit({
+       userId: coordinatorId,
+       action: "GENERATE_SUBJECTS",
+       targetTable: "generatedSubject",
+       targetId: competition_id,
+       description: `5 subjects generated for competition ${competition_id}`,
+       ipAddress: req.ip,
+     });
     return res.status(201).json({
       success: true,
       message: "5 subjects generated successfully",
@@ -824,13 +828,14 @@ const validateSubject = async (req, res) => {
     });
 
     // AUDIT LOG
-    await audit({
-      userId: coordinatorId,
-      action: "VALIDATE_SUBJECT",
-      entity: "GeneratedSubject",
-      entityId: subject_id,
-      details: { competition_id, pdf_path },
-    });
+   await audit({
+       userId: coordinatorId,
+       action: "VALIDATE_SUBJECT",
+       targetTable: "generatedSubject",
+       targetId: subject_id,
+       description: `Subject ${subject_id} validated as official for competition ${competition_id}, PDF: ${pdf_path}`,
+       ipAddress: req.ip,
+     });
 
     return res.status(200).json({
       success: true,
