@@ -24,7 +24,7 @@ app.use("/api/modules", require("./src/routes/module.routes"));
 app.use("/api/candidates", require("./src/routes/candidate.routes"));
 app.use('/api/supervisor', supervisorRoutes);
 app.use("/api/rooms", require("./src/routes/room.routes"))
-app.use("/api/competition",require("./src/routes/exercise.route"))
+// app.use("/api/competition",require("./src/routes/exercise.route"))
 app.use('/api/correction', require("./src/routes/correction.routes"));
 // Error middleware
 
