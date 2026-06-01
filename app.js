@@ -10,8 +10,10 @@ const supervisorRoutes = require("./src/routes/supervisor.routes");
 const app = express();
 app.use(cors()); //!change it later
 app.use(express.json());
-app.set('trust proxy',true);
-// app.set('trust proxy',1); //* just leave it here
+app.set('trust proxy',true); 
+const path = require("path");
+app.use("/uploads", express.static(path.join(__dirname, "src/uploads")));
+
 
 //Routes
 
@@ -25,7 +27,7 @@ app.use("/api/candidates", require("./src/routes/candidate.routes"));
 app.use('/api/supervisor', supervisorRoutes);
 
 app.use("/api/rooms", require("./src/routes/room.routes"))
-// app.use("/api/competition",require("./src/routes/exercise.route"))
+app.use("/api/exercise",require("./src/routes/exercise.route"))
 app.use('/api/correction', require("./src/routes/correction.routes"));
 
 app.use(

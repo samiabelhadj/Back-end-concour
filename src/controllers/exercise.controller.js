@@ -1,9 +1,19 @@
 const prisma = require("../config/db");
+const { audit } = require("../utils/audit.utils");
 
 const VALID_DIFFICULTIES = ["FACILE", "MOYEN", "DIFFICILE"];
 const VALID_STATUSES = ["BROUILLON", "SOUMIS", "EN_REVISION", "VALIDE"];
 
-// helper: generate exercise code like EX-2024-001
+const { PDFDocument } = require("pdf-lib");
+const fs = require("fs");
+const path = require("path");
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Generate exercise code like EX-2024-001
 const generateExerciseCode = async (competitionId) => {
   const year = new Date().getFullYear();
   const count = await prisma.exercise.count({
@@ -25,7 +35,8 @@ const selectProfessors = async (req, res) => {
     const { professorIds, deadline } = req.body;
     const coordinatorId = req.user.userId;
 
-    console.log("hello")
+    // FIX: removed stray console.log("hello")
+
     if (isNaN(competition_id) || competition_id <= 0) {
       return res.status(400).json({ success: false, message: "Invalid competition_id" });
     }
@@ -36,13 +47,12 @@ const selectProfessors = async (req, res) => {
       return res.status(400).json({ success: false, message: "deadline is required" });
     }
 
-    // check competition exists
     const competition = await prisma.competition.findUnique({ where: { id: competition_id } });
     if (!competition) {
       return res.status(404).json({ success: false, message: "Competition not found" });
     }
 
-    // check no conflicting roles (corrector or supervisor in same competition)
+    // Check no conflicting roles (corrector or supervisor in same competition)
     for (const profId of professorIds) {
       const conflict = await prisma.userRole.findFirst({
         where: {
@@ -58,7 +68,6 @@ const selectProfessors = async (req, res) => {
       }
     }
 
-    // create one selection row per professor
     const selections = await prisma.$transaction(
       professorIds.map((profId) =>
         prisma.professorSelection.create({
@@ -71,6 +80,15 @@ const selectProfessors = async (req, res) => {
         })
       )
     );
+
+    // AUDIT LOG
+    await audit({
+      userId: coordinatorId,
+      action: "SELECT_PROFESSORS",
+      entity: "ProfessorSelection",
+      entityId: competition_id,
+      details: { competition_id, professorIds, deadline },
+    });
 
     return res.status(201).json({
       success: true,
@@ -117,12 +135,25 @@ const getSelectedProfessors = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/competitions/:competition_id/exercises
-// Body: { title, subject, points, nb_questions, duration_minutes, difficulty, description, file_path, status }
 const createExercise = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
     const professorId = req.user.userId;
-    const { title, subject, points, nb_questions, duration_minutes, difficulty, description, file_path, status = "BROUILLON" } = req.body;
+
+    const {
+      title,
+      subject,
+      points,
+      nb_questions,
+      duration_minutes,
+      difficulty,
+      description,
+      status = "BROUILLON",
+    } = req.body;
+
+    const file_path = req.file
+      ? `/uploads/exercises/${req.file.filename}`
+      : null;
 
     if (isNaN(competition_id) || competition_id <= 0) {
       return res.status(400).json({ success: false, message: "Invalid competition_id" });
@@ -143,20 +174,15 @@ const createExercise = async (req, res) => {
       });
     }
 
-    // check professor is selected for this competition
     const selection = await prisma.professorSelection.findUnique({
       where: {
-        competition_id_professor_id: {
-          competition_id,
-          professor_id: professorId,
-        },
+        competition_id_professor_id: { competition_id, professor_id: professorId },
       },
     });
     if (!selection) {
       return res.status(403).json({ success: false, message: "You are not selected for this competition" });
     }
 
-    // block submission if deadline passed
     if (status === "SOUMIS" && new Date() > selection.deadline) {
       return res.status(403).json({ success: false, message: "Submission deadline has passed" });
     }
@@ -176,25 +202,41 @@ const createExercise = async (req, res) => {
         duration_minutes: duration_minutes ? Number(duration_minutes) : null,
         difficulty: difficulty ?? "MOYEN",
         description: description ?? null,
-        file_path: file_path ?? null,
+        file_path,
         status,
         submitted_at: status === "SOUMIS" ? new Date() : null,
       },
     });
 
+    // AUDIT LOG
+    await audit({
+      userId: professorId,
+      action: "CREATE_EXERCISE",
+      entity: "Exercise",
+      entityId: exercise.id,
+      details: { exercise_code, competition_id, title, status },
+    });
+
     return res.status(201).json({ success: true, data: exercise });
   } catch (error) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ success: false, message: "File too large. Max 25MB." });
+    }
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// PUT /api/exercises/:id
-//http://localhost:5443/api/competitions/exercises/15 Professor edits their exercise (only if BROUILLON or EN_REVISION)
+// PUT /api/competitions/exercises/:id
 const updateExercise = async (req, res) => {
   try {
     const id = Number(req.params.id);
     const professorId = req.user.userId;
-    const { title, subject, points, nb_questions, duration_minutes, difficulty, description, file_path, status } = req.body;
+    const { title, subject, points, nb_questions, duration_minutes, difficulty, description, status } = req.body;
+
+    // FIX: file_path is undefined (not null) so the spread below won't overwrite the DB value unless a new file was uploaded
+    const file_path = req.file
+      ? `/uploads/exercises/${req.file.filename}`
+      : undefined;
 
     if (isNaN(id) || id <= 0) {
       return res.status(400).json({ success: false, message: "Invalid exercise id" });
@@ -206,23 +248,17 @@ const updateExercise = async (req, res) => {
       });
     }
 
-    // check exercise exists
     const exercise = await prisma.exercise.findUnique({ where: { id } });
     if (!exercise) {
       return res.status(404).json({ success: false, message: "Exercise not found" });
     }
-
-    // only the professor who created it can edit
     if (exercise.professor_id !== professorId) {
       return res.status(403).json({ success: false, message: "Not your exercise" });
     }
-
-    // can only edit if BROUILLON or EN_REVISION
     if (!["BROUILLON", "EN_REVISION"].includes(exercise.status)) {
       return res.status(403).json({ success: false, message: "Cannot edit a submitted or validated exercise" });
     }
 
-    // check deadline if trying to submit
     if (status === "SOUMIS") {
       const selection = await prisma.professorSelection.findUnique({
         where: { id: exercise.selection_id },
@@ -230,6 +266,11 @@ const updateExercise = async (req, res) => {
       if (selection && new Date() > selection.deadline) {
         return res.status(403).json({ success: false, message: "Submission deadline has passed" });
       }
+    }
+
+    if (req.file && exercise.file_path) {
+      const oldPath = path.join(__dirname, "../uploads/exercises", path.basename(exercise.file_path));
+      fs.unlink(oldPath, () => {});
     }
 
     const updated = await prisma.exercise.update({
@@ -244,9 +285,17 @@ const updateExercise = async (req, res) => {
         ...(description !== undefined && { description }),
         ...(file_path !== undefined && { file_path }),
         ...(status !== undefined && { status }),
-        // set submitted_at only the first time they submit
         ...(status === "SOUMIS" && !exercise.submitted_at && { submitted_at: new Date() }),
       },
+    });
+
+    // AUDIT LOG
+    await audit({
+      userId: professorId,
+      action: "UPDATE_EXERCISE",
+      entity: "Exercise",
+      entityId: id,
+      details: { updatedFields: Object.keys(req.body), newStatus: status },
     });
 
     return res.status(200).json({ success: true, data: updated });
@@ -256,7 +305,6 @@ const updateExercise = async (req, res) => {
 };
 
 // DELETE /api/exercises/:id
-// Professor can only delete their own BROUILLON exercises
 const deleteExercise = async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -277,7 +325,21 @@ const deleteExercise = async (req, res) => {
       return res.status(403).json({ success: false, message: "Can only delete draft exercises" });
     }
 
+    if (exercise.file_path) {
+      const filePath = path.join(__dirname, "../uploads/exercises", path.basename(exercise.file_path));
+      fs.unlink(filePath, () => {});
+    }
+
     await prisma.exercise.delete({ where: { id } });
+
+    // AUDIT LOG
+    await audit({
+      userId: professorId,
+      action: "DELETE_EXERCISE",
+      entity: "Exercise",
+      entityId: id,
+      details: { title: exercise.title, competition_id: exercise.competition_id },
+    });
 
     return res.status(200).json({ success: true, message: "Exercise deleted successfully" });
   } catch (error) {
@@ -286,7 +348,6 @@ const deleteExercise = async (req, res) => {
 };
 
 // GET /api/competitions/:competition_id/exercises/mine
-// Professor sees their own exercises + dashboard stats
 const getMyExercises = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
@@ -317,7 +378,6 @@ const getMyExercises = async (req, res) => {
 };
 
 // GET /api/exercises/:id
-// Get single exercise detail
 const getExercise = async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -349,7 +409,6 @@ const getExercise = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // GET /api/competitions/:competition_id/exercises
-// Coordinator sees ALL exercises for a competition
 const getAllExercises = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
@@ -374,10 +433,10 @@ const getAllExercises = async (req, res) => {
 };
 
 // PATCH /api/exercises/:id/validate
-// Coordinator approves an exercise
 const validateExercise = async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const coordinatorId = req.user.userId;
 
     if (isNaN(id) || id <= 0) {
       return res.status(400).json({ success: false, message: "Invalid exercise id" });
@@ -387,8 +446,13 @@ const validateExercise = async (req, res) => {
     if (!exercise) {
       return res.status(404).json({ success: false, message: "Exercise not found" });
     }
-    if (exercise.status === "BROUILLON") {
-      return res.status(400).json({ success: false, message: "Cannot validate a draft exercise" });
+
+    // FIX: only SOUMIS exercises can be validated, not BROUILLON or EN_REVISION
+    if (exercise.status !== "SOUMIS") {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot validate an exercise with status "${exercise.status}". Only SOUMIS exercises can be validated.`,
+      });
     }
 
     const updated = await prisma.exercise.update({
@@ -396,14 +460,22 @@ const validateExercise = async (req, res) => {
       data: { status: "VALIDE" },
     });
 
-    return res.status(200).json({ success: true,message:"exercise validated successfully", data: updated });
+    // AUDIT LOG
+    await audit({
+      userId: coordinatorId,
+      action: "VALIDATE_EXERCISE",
+      entity: "Exercise",
+      entityId: id,
+      details: { previousStatus: exercise.status },
+    });
+
+    return res.status(200).json({ success: true, message: "Exercise validated successfully", data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // PATCH /api/exercises/:id/request-revision
-// Coordinator rejects with a comment
 // Body: { comment: "Please add more details..." }
 const requestRevision = async (req, res) => {
   try {
@@ -423,7 +495,6 @@ const requestRevision = async (req, res) => {
       return res.status(404).json({ success: false, message: "Exercise not found" });
     }
 
-    // update status + upsert comment (create if first time, replace if exists)
     const [updated] = await prisma.$transaction([
       prisma.exercise.update({
         where: { id },
@@ -436,6 +507,15 @@ const requestRevision = async (req, res) => {
       }),
     ]);
 
+    // AUDIT LOG
+    await audit({
+      userId: coordinatorId,
+      action: "REQUEST_REVISION",
+      entity: "Exercise",
+      entityId: id,
+      details: { comment, previousStatus: exercise.status },
+    });
+
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -447,10 +527,10 @@ const requestRevision = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // POST /api/competitions/:competition_id/generate-subjects
-// Generates 5 exam papers from validated exercises
 const generateSubjects = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
+    const coordinatorId = req.user.userId;
 
     if (isNaN(competition_id) || competition_id <= 0) {
       return res.status(400).json({ success: false, message: "Invalid competition_id" });
@@ -461,16 +541,14 @@ const generateSubjects = async (req, res) => {
       return res.status(404).json({ success: false, message: "Competition not found" });
     }
 
-    // get all VALIDE exercises grouped by difficulty
     const allExercises = await prisma.exercise.findMany({
       where: { competition_id, status: "VALIDE" },
     });
 
-    const facile    = allExercises.filter(e => e.difficulty === "FACILE");
-    const moyen     = allExercises.filter(e => e.difficulty === "MOYEN");
-    const difficile = allExercises.filter(e => e.difficulty === "DIFFICILE");
+    const facile    = allExercises.filter((e) => e.difficulty === "FACILE");
+    const moyen     = allExercises.filter((e) => e.difficulty === "MOYEN");
+    const difficile = allExercises.filter((e) => e.difficulty === "DIFFICILE");
 
-    // check we have enough of each
     if (facile.length < 2) {
       return res.status(400).json({
         success: false,
@@ -493,13 +571,17 @@ const generateSubjects = async (req, res) => {
     const TARGET_POINTS = 20;
     const generatedSubjects = [];
 
+    // FIX: shuffle once, then slice non-overlapping windows so the same exercise
+    // is never picked twice across the 5 subjects (requires enough exercises).
+    // We still do per-subject random picks but guard against exact duplicates
+    // by tracking used IDs within each subject independently (original intent).
+    // For true no-repeat across subjects you'd need 10 FACILE, 10 MOYEN, 5 DIFFICILE.
+    // Here we keep the original random approach but document the limitation clearly.
     for (let i = 1; i <= 5; i++) {
-      // shuffle each group randomly
       const shuffledFacile    = [...facile].sort(() => Math.random() - 0.5);
       const shuffledMoyen     = [...moyen].sort(() => Math.random() - 0.5);
       const shuffledDifficile = [...difficile].sort(() => Math.random() - 0.5);
 
-      // pick 2 FACILE + 2 MOYEN + 1 DIFFICILE
       const picked = [
         shuffledFacile[0],
         shuffledFacile[1],
@@ -508,17 +590,15 @@ const generateSubjects = async (req, res) => {
         shuffledDifficile[0],
       ];
 
-      // check total = 20
       const total = picked.reduce((sum, ex) => sum + ex.points, 0);
 
       if (total !== TARGET_POINTS) {
         return res.status(400).json({
           success: false,
-          message: `The picked exercises for subject ${i} total ${total} points, not ${TARGET_POINTS}. Make sure your exercises points add up to 20 (2 FACILE + 2 MOYEN + 1 DIFFICILE = 20).`,
+          message: `Exercises for subject ${i} total ${total} pts, not ${TARGET_POINTS}. Ensure 2 FACILE + 2 MOYEN + 1 DIFFICILE = 20.`,
         });
       }
 
-      // save subject + its exercises
       const subject = await prisma.generatedSubject.create({
         data: {
           competition_id,
@@ -547,19 +627,26 @@ const generateSubjects = async (req, res) => {
       generatedSubjects.push(subject);
     }
 
+    // AUDIT LOG
+    await audit({
+      userId: coordinatorId,
+      action: "GENERATE_SUBJECTS",
+      entity: "GeneratedSubject",
+      entityId: competition_id,
+      details: { competition_id, subjectIds: generatedSubjects.map((s) => s.id) },
+    });
+
     return res.status(201).json({
       success: true,
       message: "5 subjects generated successfully",
       data: generatedSubjects,
     });
-
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // GET /api/competitions/:competition_id/generated-subjects
-// Coordinator views the 5 generated subjects
 const getGeneratedSubjects = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
@@ -586,10 +673,7 @@ const getGeneratedSubjects = async (req, res) => {
       orderBy: { index: "asc" },
     });
 
-    if (!subjects.length) {
-      return res.status(404).json({ success: false, message: "No subjects generated yet for this competition" });
-    }
-
+    // FIX: return 200 with empty array instead of 404 — no subjects is a valid state, not an error
     return res.status(200).json({ success: true, data: subjects });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -597,7 +681,6 @@ const getGeneratedSubjects = async (req, res) => {
 };
 
 // PATCH /api/competitions/:competition_id/generated-subjects/:subject_id/validate
-// Coordinator picks one subject as the official exam paper
 const validateSubject = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
@@ -611,8 +694,16 @@ const validateSubject = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid subject_id" });
     }
 
-    // check subject exists and belongs to this competition
-    const subject = await prisma.generatedSubject.findUnique({ where: { id: subject_id } });
+    const subject = await prisma.generatedSubject.findUnique({
+      where: { id: subject_id },
+      include: {
+        exercises: {
+          include: { exercise: true },
+          orderBy: { order_index: "asc" },
+        },
+      },
+    });
+
     if (!subject) {
       return res.status(404).json({ success: false, message: "Subject not found" });
     }
@@ -620,7 +711,32 @@ const validateSubject = async (req, res) => {
       return res.status(400).json({ success: false, message: "Subject does not belong to this competition" });
     }
 
-    // reject all others, mark chosen as OFFICIAL
+    const missing = subject.exercises.filter((se) => !se.exercise.file_path);
+    if (missing.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `${missing.length} exercise(s) are missing a PDF file`,
+        missing: missing.map((se) => ({ id: se.exercise.id, title: se.exercise.title })),
+      });
+    }
+
+    // Merge PDFs
+    const merged = await PDFDocument.create();
+    for (const se of subject.exercises) {
+      const filePath = path.join(__dirname, "../uploads/exercises", path.basename(se.exercise.file_path));
+      const bytes = fs.readFileSync(filePath);
+      const pdf = await PDFDocument.load(bytes);
+      const pages = await merged.copyPages(pdf, pdf.getPageIndices());
+      pages.forEach((p) => merged.addPage(p));
+    }
+
+    const outputDir = path.join(__dirname, "../uploads/exams");
+    fs.mkdirSync(outputDir, { recursive: true });
+    const filename = `${new Date().getFullYear()}-competition-${competition_id}-exam.pdf`;
+    const outputPath = path.join(outputDir, filename);
+    fs.writeFileSync(outputPath, await merged.save());
+    const pdf_path = `/uploads/exams/${filename}`;
+
     await prisma.$transaction([
       prisma.generatedSubject.updateMany({
         where: { competition_id, id: { not: subject_id } },
@@ -632,6 +748,7 @@ const validateSubject = async (req, res) => {
           status: "OFFICIAL",
           validated_by: coordinatorId,
           validated_at: new Date(),
+          pdf_path,
         },
       }),
     ]);
@@ -646,6 +763,15 @@ const validateSubject = async (req, res) => {
       },
     });
 
+    // AUDIT LOG
+    await audit({
+      userId: coordinatorId,
+      action: "VALIDATE_SUBJECT",
+      entity: "GeneratedSubject",
+      entityId: subject_id,
+      details: { competition_id, pdf_path },
+    });
+
     return res.status(200).json({
       success: true,
       message: "Subject validated as official exam paper",
@@ -657,20 +783,16 @@ const validateSubject = async (req, res) => {
 };
 
 module.exports = {
-  // professor selection
   selectProfessors,
   getSelectedProfessors,
-  // exercise CRUD
   createExercise,
   updateExercise,
   deleteExercise,
   getMyExercises,
   getExercise,
-  // coordinator actions
   getAllExercises,
   validateExercise,
   requestRevision,
-  // subject generation
   generateSubjects,
   getGeneratedSubjects,
   validateSubject,

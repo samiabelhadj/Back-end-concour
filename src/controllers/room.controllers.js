@@ -817,6 +817,75 @@ const unlinkRoomFromCompetition = async (req, res) => {
 };
  
  
+const unlinkAllRoomsFromCompetition = async (req, res) => {
+  try {
+    const competition_id = Number(req.params.competition_id);
+
+    if (isNaN(competition_id) || competition_id <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid competition_id"
+      });
+    }
+
+    // 1. Get all linked rooms
+    const linkedRooms = await prisma.competitionRoom.findMany({
+      where: { competition_id },
+      select: { room_id: true }
+    });
+
+    if (linkedRooms.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No rooms linked to this competition"
+      });
+    }
+
+    const roomIds = linkedRooms.map(r => r.room_id);
+
+    // 2. Check if any candidates are assigned to these rooms
+    const assignedCount = await prisma.candidateRoom.count({
+      where: {
+        room_id: { in: roomIds },
+        exam: { competition_id }
+      }
+    });
+
+    if (assignedCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `Cannot unlink rooms: ${assignedCount} candidate(s) already assigned`
+      });
+    }
+
+    // 3. Remove all links and restore rooms to AVAILABLE
+    await prisma.$transaction([
+      prisma.competitionRoom.deleteMany({
+        where: { competition_id }
+      }),
+
+      prisma.examRoom.updateMany({
+        where: {
+          id: { in: roomIds }
+        },
+        data: {
+          status: "AVAILABLE"
+        }
+      })
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: `${roomIds.length} room(s) unlinked from competition and set back to AVAILABLE`
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
 
 // ─── GET rooms for a specific competition ─────────────────────────────────────
 // Returns rooms linked to a competition with occupancy info.
@@ -1135,7 +1204,8 @@ module.exports = {
   assignSupervisor,
   removeSupervisor,
   resetAffectation,
-  getAvailableRooms  
+  getAvailableRooms ,
+  unlinkAllRoomsFromCompetition
 
 };
 
