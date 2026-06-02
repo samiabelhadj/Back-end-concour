@@ -424,7 +424,7 @@ const getRoomsStats = async (req, res) => {
 // Assigns unplaced candidates (for a competition) to rooms that still have space,
 // ordered by candidate_id. Updates competitionRoom.places_occupied as it goes.
 // Requires: competition_id + exam_id in body (candidateRoom needs exam_id).
- const runAutoAffectation = async (req, res) => {
+const runAutoAffectation = async (req, res) => {
   try {
     const { competition_id, exam_id } = req.body;
 
@@ -446,6 +446,19 @@ const getRoomsStats = async (req, res) => {
       return res.status(404).json({ success: false, message: "Competition not found" });
     }
 
+    // ← NEW: Look up the session that belongs to this exam
+    const examSession = await prisma.examSession.findFirst({
+      where: { exam_id: examId },
+      select: { id: true }
+    });
+    if (!examSession) {
+      return res.status(404).json({
+        success: false,
+        message: "No session found for this exam"
+      });
+    }
+    const sessionId = examSession.id; // ← NEW: used in every insert below
+
     // 2. Get all candidate IDs already assigned for this exam
     const alreadyAssigned = await prisma.candidateRoom.findMany({
       where: { exam_id: examId },
@@ -457,7 +470,7 @@ const getRoomsStats = async (req, res) => {
     const allCandidates = await prisma.candidates.findMany({
       where: { competition_id: competitionId },
       orderBy: { candidate_id: "asc" },
-      select: { id: true, candidate_id: true, etablissement: true } // ← added etablissement
+      select: { id: true, candidate_id: true, etablissement: true }
     });
 
     const unassignedRaw = allCandidates.filter((c) => !assignedIds.has(c.id));
@@ -469,8 +482,7 @@ const getRoomsStats = async (req, res) => {
       });
     }
 
-    // ── NEW: Round-robin interleave by etablissement ──────────────────────────
-    // Group candidates by their etablissement
+    // ── Round-robin interleave by etablissement ───────────────────────────────
     const groupedByEtab = {};
     for (const c of unassignedRaw) {
       const etab = c.etablissement?.trim() || "unknown";
@@ -478,10 +490,8 @@ const getRoomsStats = async (req, res) => {
       groupedByEtab[etab].push(c);
     }
 
-    // Interleave: pick one from each group in turn, round after round
-    // [USTHB_1, ESI_1, USTO_1, USTHB_2, ESI_2, USTO_2, USTHB_3, ...]
     const groups = Object.values(groupedByEtab);
-    const unassigned = []; // this replaces the old `unassigned` array
+    const unassigned = [];
 
     let round = 0;
     let hasMore = true;
@@ -512,7 +522,7 @@ const getRoomsStats = async (req, res) => {
       });
     }
 
-    // 5. Build assignments (same as before — interleaving already handled above)
+    // 5. Build assignments
     const candidateRoomInserts = [];
     const occupancyUpdates = {};
 
@@ -527,6 +537,7 @@ const getRoomsStats = async (req, res) => {
           candidate_id: unassigned[candidateIndex].id,
           room_id: cr.room_id,
           exam_id: examId,
+          session_id: sessionId,              // ← NEW: now filled from examSession lookup
           place_number: cr.places_occupied + i + 1
         });
         occupancyUpdates[cr.room_id] = (occupancyUpdates[cr.room_id] ?? 0) + 1;
@@ -566,7 +577,7 @@ const getRoomsStats = async (req, res) => {
       data: {
         assigned: candidateRoomInserts.length,
         still_unassigned: unassigned.length - candidateRoomInserts.length,
-        etablissements_found: Object.keys(groupedByEtab).length // bonus: useful for debugging
+        etablissements_found: Object.keys(groupedByEtab).length
       }
     });
 
@@ -580,7 +591,6 @@ const getRoomsStats = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
- 
 // ─── GET emargement (sign-in sheet) for a room + exam ─────────────────────────
 // The old endpoint was per salle_concours (which no longer exists).
 // Now it's scoped to a room + exam combination.
