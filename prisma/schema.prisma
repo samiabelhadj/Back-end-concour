@@ -306,57 +306,7 @@ enum ExamRoomStatus {
   CLOSED
 }
 
-<<<<<<< HEAD
 enum competition_status {
   ACTIVE
   FINISHED
-}
-=======
-model equipments {
-  id          Int       @id @default(autoincrement())
-  room_id     Int
-  name        String    @db.VarChar(100)
-  description String?   @db.Text
-  created_at  DateTime  @default(dbgenerated("(now())")) @db.DateTime(0)
-  room        examRoom @relation(fields: [room_id], references: [id])
-}
-
-model candidateRoom {
-  candidate_id Int
-  room_id      Int
-  exam_id      Int
-  session_id   Int?
-  place_number Int?
-
-  candidate candidates @relation(fields: [candidate_id], references: [id])
-  room      examRoom  @relation(fields: [room_id], references: [id])
-  exam      exam       @relation(fields: [exam_id], references: [id])
-  session   examSession? @relation(fields: [session_id], references: [id])
-
-  @@id([candidate_id, room_id, exam_id])
-}
-
-model competitionRoom {
-  competition_id  Int
-  room_id         Int
-  places_occupied Int         @default(0)
-  competition     competition @relation(fields: [competition_id], references: [id])
-  examRoom       examRoom   @relation(fields: [room_id], references: [id])
-
-  @@id([competition_id, room_id])
-}
-
-model exam {
-  id             Int      @id @default(autoincrement())
-  competition_id Int
-  name           String   @db.VarChar(200) // "Algorithms", "AI", "English"
-  description    String?  @db.Text
-  coefficient    Float? // weight of this exam in final score
-  duration       Int? // duration in minutes
-  created_at     DateTime @default(now())
-
-  competition     competition       @relation(fields: [competition_id], references: [id])
-  examSessions    examSession[]
-  candidateRooms  candidateRoom[]
-  roomSupervisors roomSupervisor[]
 }
