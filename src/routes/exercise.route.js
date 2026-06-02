@@ -60,6 +60,7 @@ router.get("/:competition_id/exercises",      requireRole("coordinator"),       
 router.get("/:id",                            requireRole(["coordinator", "professor_creator"]), getExercise);
 
 router.patch("/:id",  requireRole("professor_creator"), upload.single("file"), updateExercise);
+
 router.delete("/:id", requireRole("professor_creator"), deleteExercise);
 
 // ─── COORDINATOR ACTIONS ON EXERCISES ────────────────────────────────────────

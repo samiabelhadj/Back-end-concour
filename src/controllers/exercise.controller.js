@@ -134,8 +134,7 @@ const getSelectedProfessors = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // EXERCISE CRUD (Professor side)
 // ─────────────────────────────────────────────────────────────────────────────
-
-const createExercise = async (req, res) => {
+ const createExercise = async (req, res) => {
   try {
     const competition_id = Number(req.params.competition_id);
     const professorId = req.user.userId;
@@ -262,6 +261,7 @@ const updateExercise = async (req, res) => {
       description,
       status,
     } = req.body;
+    console.log(status)
 
     const file_path = req.file
       ? `/uploads/exercises/${req.file.filename}`
@@ -710,6 +710,9 @@ const generateSubjects = async (req, res) => {
   }
 };
 
+
+
+
 // GET /api/competitions/:competition_id/generated-subjects
 const getGeneratedSubjects = async (req, res) => {
   try {
@@ -829,13 +832,13 @@ const validateSubject = async (req, res) => {
 
     // AUDIT LOG
    await audit({
-       userId: coordinatorId,
-       action: "VALIDATE_SUBJECT",
-       targetTable: "generatedSubject",
-       targetId: subject_id,
-       description: `Subject ${subject_id} validated as official for competition ${competition_id}, PDF: ${pdf_path}`,
-       ipAddress: req.ip,
-     });
+  userId: coordinatorId,
+  action: "VALIDATE_SUBJECT",
+  targetTable: "generatedSubject",
+  targetId: subject_id,
+  description: `Subject ${subject_id} validated as official for competition ${competition_id}, PDF: ${pdf_path}`,
+  ipAddress: req.ip,
+});
 
     return res.status(200).json({
       success: true,
