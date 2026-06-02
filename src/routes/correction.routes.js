@@ -2,7 +2,7 @@ const express    = require('express');
 const router     = express.Router();
 const controller = require('../controllers/correction.controller');
 
-router.post('/assign',                 controller.assignCorrectorsAuto);
+// router.post('/assign',                 controller.assignCorrectorsAuto);
 router.post('/grade',                  controller.fillGrade);
 router.post('/resolve/:corr_code',     controller.resolveDiscrepancy);
 router.get('/result/:corr_code',       controller.getFinalResult);

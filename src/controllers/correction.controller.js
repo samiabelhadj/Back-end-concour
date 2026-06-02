@@ -414,7 +414,7 @@ const getAnonGradeByCode = async (req, res) => {
 };
 
 module.exports = {
-  assignCorrectorsAuto,
+  // assignCorrectorsAuto,
   fillGrade,
   resolveDiscrepancy,
   getFinalResult,
