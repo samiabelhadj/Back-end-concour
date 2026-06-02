@@ -24,4 +24,6 @@ router.get(   "/:id/sessions",             requireRole("admin", "coordinateur"),
 router.put(   "/:id/sessions/:sessionId",  requireRole("admin"), c.updateSession);
 router.delete("/:id/sessions/:sessionId",  requireRole("admin"), c.deleteSession);
 
+
+
 module.exports = router;
