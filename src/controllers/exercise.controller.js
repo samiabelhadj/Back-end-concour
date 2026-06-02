@@ -2,7 +2,6 @@ const prisma = require("../config/db");
 const { audit } = require("../utils/audit.utils");
 
 const VALID_DIFFICULTIES = ["FACILE", "MOYEN", "DIFFICILE"];
-const VALID_STATUSES = ["BROUILLON", "SOUMIS", "EN_REVISION", "VALIDE"];
 
 const { PDFDocument } = require("pdf-lib");
 const fs = require("fs");
@@ -146,7 +145,7 @@ const getSelectedProfessors = async (req, res) => {
       duration_minutes,
       difficulty,
       description,
-      status = "BROUILLON",
+      // status = "SOUMIS",
     } = req.body;
 
     const file_path = req.file
@@ -174,12 +173,14 @@ const getSelectedProfessors = async (req, res) => {
       });
     }
 
-    if (!VALID_STATUSES.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Valid values: ${VALID_STATUSES.join(", ")}`,
-      });
-    }
+    // if (!VALID_STATUSES.includes(status)) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: `Invalid status. Valid values: ${VALID_STATUSES.join(", ")}`,
+    //   });
+    // }
+
+    
 
     const selection = await prisma.professorSelection.findUnique({
       where: {
@@ -197,12 +198,20 @@ const getSelectedProfessors = async (req, res) => {
       });
     }
 
-    if (status === "SOUMIS" && new Date() > selection.deadline) {
-      return res.status(403).json({
-        success: false,
-        message: "Submission deadline has passed",
-      });
-    }
+      // Check deadline (always check, since all exercises are submitted immediately)
+if (new Date() > selection.deadline) {
+  return res.status(403).json({
+    success: false,
+    message: "Submission deadline has passed",
+  });
+}
+
+    // if (status === "SOUMIS" && new Date() > selection.deadline) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Submission deadline has passed",
+    //   });
+    // }
 
     const difficultyPoints = { FACILE: 3, MOYEN: 4, DIFFICILE: 6 };
     const exercise_code = await generateExerciseCode(competition_id);
@@ -221,8 +230,8 @@ const getSelectedProfessors = async (req, res) => {
         difficulty,
         description: description ?? null,
         file_path,
-        status,
-        submitted_at: status === "SOUMIS" ? new Date() : null,
+         status: "SOUMIS",        
+         submitted_at: new Date(),  
       },
     });
 
@@ -231,7 +240,7 @@ const getSelectedProfessors = async (req, res) => {
       action: "CREATE_EXERCISE",
       targetTable: "exercise",
       targetId: exercise.id,
-      description: `Exercise "${title}" created for competition ${competition_id} with status ${status}`,
+      description: `Exercise "${title}" created for competition ${competition_id}`,
       ipAddress: req.ip,
     });
 
@@ -258,10 +267,8 @@ const updateExercise = async (req, res) => {
       nb_questions,
       duration_minutes,
       difficulty,
-      description,
-      status,
-    } = req.body;
-    console.log(status)
+      description
+    } = req.body; 
 
     const file_path = req.file
       ? `/uploads/exercises/${req.file.filename}`
@@ -279,12 +286,12 @@ const updateExercise = async (req, res) => {
       });
     }
 
-    if (status && !VALID_STATUSES.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid status. Valid values: ${VALID_STATUSES.join(", ")}`,
-      });
-    }
+    // if (status && !VALID_STATUSES.includes(status)) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: `Invalid status. Valid values: ${VALID_STATUSES.join(", ")}`,
+    //   });
+    // }
 
     const exercise = await prisma.exercise.findUnique({ where: { id } });
 
@@ -296,24 +303,36 @@ const updateExercise = async (req, res) => {
       return res.status(403).json({ success: false, message: "Not your exercise" });
     }
 
-    if (!["BROUILLON", "EN_REVISION"].includes(exercise.status)) {
-      return res.status(403).json({
-        success: false,
-        message: "Cannot edit a submitted or validated exercise",
-      });
-    }
+    // Check if exercise can be updated (only before deadline)
+const selection = await prisma.professorSelection.findUnique({
+  where: { id: exercise.selection_id },
+});
 
-    if (status === "SOUMIS") {
-      const selection = await prisma.professorSelection.findUnique({
-        where: { id: exercise.selection_id },
-      });
-      if (selection && new Date() > selection.deadline) {
-        return res.status(403).json({
-          success: false,
-          message: "Submission deadline has passed",
-        });
-      }
-    }
+if (selection && new Date() > selection.deadline) {
+  return res.status(403).json({
+    success: false,
+    message: "Cannot update exercise after submission deadline",
+  });
+}
+
+    // if (!["BROUILLON", "EN_REVISION"].includes(exercise.status)) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Cannot edit a submitted or validated exercise",
+    //   });
+    // }
+
+    // if (status === "SOUMIS") {
+    //   const selection = await prisma.professorSelection.findUnique({
+    //     where: { id: exercise.selection_id },
+    //   });
+    //   if (selection && new Date() > selection.deadline) {
+    //     return res.status(403).json({
+    //       success: false,
+    //       message: "Submission deadline has passed",
+    //     });
+    //   }
+    // }
 
     if (req.file && exercise.file_path) {
       const oldPath = path.join(
@@ -343,10 +362,7 @@ const updateExercise = async (req, res) => {
         }),
         ...(description !== undefined && { description }),
         ...(file_path !== undefined && { file_path }),
-        ...(status !== undefined && { status }),
-        ...(status === "SOUMIS" && !exercise.submitted_at && {
-          submitted_at: new Date(),
-        }),
+         
       },
     });
 
@@ -382,9 +398,21 @@ const deleteExercise = async (req, res) => {
     if (exercise.professor_id !== professorId) {
       return res.status(403).json({ success: false, message: "Not your exercise" });
     }
-    if (exercise.status !== "BROUILLON") {
-      return res.status(403).json({ success: false, message: "Can only delete draft exercises" });
-    }
+    // if (exercise.status !== "BROUILLON") {
+    //   return res.status(403).json({ success: false, message: "Can only delete draft exercises" });
+    // }
+
+    // Check if exercise can be deleted (only before deadline)
+const selection = await prisma.professorSelection.findUnique({
+  where: { id: exercise.selection_id },
+});
+
+if (selection && new Date() > selection.deadline) {
+  return res.status(403).json({
+    success: false,
+    message: "Cannot delete exercise after submission deadline",
+  });
+}
 
     if (exercise.file_path) {
       const filePath = path.join(__dirname, "../uploads/exercises", path.basename(exercise.file_path));
@@ -421,15 +449,12 @@ const getMyExercises = async (req, res) => {
 
     const exercises = await prisma.exercise.findMany({
       where: { competition_id, professor_id: professorId },
-      include: { comment: true },
+      // include: { comment: true },
       orderBy: { created_at: "desc" },
     });
 
     const stats = {
       total: exercises.length,
-      valide: exercises.filter((e) => e.status === "VALIDE").length,
-      en_revision: exercises.filter((e) => e.status === "EN_REVISION").length,
-      brouillon: exercises.filter((e) => e.status === "BROUILLON").length,
       soumis: exercises.filter((e) => e.status === "SOUMIS").length,
     };
 
@@ -451,7 +476,7 @@ const getExercise = async (req, res) => {
     const exercise = await prisma.exercise.findUnique({
       where: { id },
       include: {
-        comment: true,
+        // comment: true,
         professor: { select: { id: true, first_name: true, last_name: true } },
       },
     });
@@ -483,7 +508,7 @@ const getAllExercises = async (req, res) => {
       where: { competition_id },
       include: {
         professor: { select: { id: true, first_name: true, last_name: true } },
-        comment: true,
+        // comment: true,
       },
       orderBy: { created_at: "desc" },
     });
@@ -495,96 +520,96 @@ const getAllExercises = async (req, res) => {
 };
 
 // PATCH /api/exercises/:id/validate
-const validateExercise = async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const coordinatorId = req.user.userId;
+// * const validateExercise = async (req, res) => {
+//   try {
+//     const id = Number(req.params.id);
+//     const coordinatorId = req.user.userId;
 
-    if (isNaN(id) || id <= 0) {
-      return res.status(400).json({ success: false, message: "Invalid exercise id" });
-    }
+//     if (isNaN(id) || id <= 0) {
+//       return res.status(400).json({ success: false, message: "Invalid exercise id" });
+//     }
 
-    const exercise = await prisma.exercise.findUnique({ where: { id } });
-    if (!exercise) {
-      return res.status(404).json({ success: false, message: "Exercise not found" });
-    }
+//     const exercise = await prisma.exercise.findUnique({ where: { id } });
+//     if (!exercise) {
+//       return res.status(404).json({ success: false, message: "Exercise not found" });
+//     }
 
-    // FIX: only SOUMIS exercises can be validated, not BROUILLON or EN_REVISION
-    if (exercise.status !== "SOUMIS") {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot validate an exercise with status "${exercise.status}". Only SOUMIS exercises can be validated.`,
-      });
-    }
+//     // FIX: only SOUMIS exercises can be validated, not BROUILLON or EN_REVISION
+//     if (exercise.status !== "SOUMIS") {
+//       return res.status(400).json({
+//         success: false,
+//         message: `Cannot validate an exercise with status "${exercise.status}". Only SOUMIS exercises can be validated.`,
+//       });
+//     }
 
-    const updated = await prisma.exercise.update({
-      where: { id },
-      data: { status: "VALIDE" },
-    });
+//     const updated = await prisma.exercise.update({
+//       where: { id },
+//       data: { status: "VALIDE" },
+//     });
 
-    // AUDIT LOG
-      await audit({
-         userId: coordinatorId,
-         action: "VALIDATE_EXERCISE",
-         targetTable: "exercise",
-         targetId: id,
-         description: `Exercise id ${id} validated, previous status was ${exercise.status}`,
-         ipAddress: req.ip,
-       });
+//     // AUDIT LOG
+//       await audit({
+//          userId: coordinatorId,
+//          action: "VALIDATE_EXERCISE",
+//          targetTable: "exercise",
+//          targetId: id,
+//          description: `Exercise id ${id} validated, previous status was ${exercise.status}`,
+//          ipAddress: req.ip,
+//        });
 
-    return res.status(200).json({ success: true, message: "Exercise validated successfully", data: updated });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
+//     return res.status(200).json({ success: true, message: "Exercise validated successfully", data: updated });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// };
 
 // PATCH /api/exercises/:id/request-revision
 // Body: { comment: "Please add more details..." }
-const requestRevision = async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { comment } = req.body;
-    const coordinatorId = req.user.userId;
+//* const requestRevision = async (req, res) => {
+//   try {
+//     const id = Number(req.params.id);
+//     const { comment } = req.body;
+//     const coordinatorId = req.user.userId;
 
-    if (isNaN(id) || id <= 0) {
-      return res.status(400).json({ success: false, message: "Invalid exercise id" });
-    }
-    if (!comment) {
-      return res.status(400).json({ success: false, message: "comment is required" });
-    }
+//     if (isNaN(id) || id <= 0) {
+//       return res.status(400).json({ success: false, message: "Invalid exercise id" });
+//     }
+//     if (!comment) {
+//       return res.status(400).json({ success: false, message: "comment is required" });
+//     }
 
-    const exercise = await prisma.exercise.findUnique({ where: { id } });
-    if (!exercise) {
-      return res.status(404).json({ success: false, message: "Exercise not found" });
-    }
+//     const exercise = await prisma.exercise.findUnique({ where: { id } });
+//     if (!exercise) {
+//       return res.status(404).json({ success: false, message: "Exercise not found" });
+//     }
 
-    const [updated] = await prisma.$transaction([
-      prisma.exercise.update({
-        where: { id },
-        data: { status: "EN_REVISION" },
-      }),
-      prisma.exerciseComment.upsert({
-        where: { exercise_id: id },
-        create: { exercise_id: id, coordinator_id: coordinatorId, comment },
-        update: { comment, coordinator_id: coordinatorId },
-      }),
-    ]);
+//     const [updated] = await prisma.$transaction([
+//       prisma.exercise.update({
+//         where: { id },
+//         data: { status: "EN_REVISION" },
+//       }),
+//       prisma.exerciseComment.upsert({
+//         where: { exercise_id: id },
+//         create: { exercise_id: id, coordinator_id: coordinatorId, comment },
+//         update: { comment, coordinator_id: coordinatorId },
+//       }),
+//     ]);
 
-    // AUDIT LOG
-      await audit({
-  userId: coordinatorId,
-  action: "REQUEST_REVISION",
-  targetTable: "exercise",
-  targetId: id,
-  description: `Revision requested for exercise id ${id}: "${comment}"`,
-  ipAddress: req.ip,
-});
+//     // AUDIT LOG
+//       await audit({
+//   userId: coordinatorId,
+//   action: "REQUEST_REVISION",
+//   targetTable: "exercise",
+//   targetId: id,
+//   description: `Revision requested for exercise id ${id}: "${comment}"`,
+//   ipAddress: req.ip,
+// });
 
-    return res.status(200).json({ success: true, data: updated });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
-  }
-};
+//     return res.status(200).json({ success: true, data: updated });
+//   } catch (error) {
+//     return res.status(500).json({ success: false, message: error.message });
+//   }
+// };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SUBJECT GENERATION
@@ -606,7 +631,7 @@ const generateSubjects = async (req, res) => {
     }
 
     const allExercises = await prisma.exercise.findMany({
-      where: { competition_id, status: "VALIDE" },
+        where: { competition_id, status: "SOUMIS" },
     });
 
     const facile    = allExercises.filter((e) => e.difficulty === "FACILE");
@@ -616,19 +641,19 @@ const generateSubjects = async (req, res) => {
     if (facile.length < 2) {
       return res.status(400).json({
         success: false,
-        message: `Need at least 2 FACILE validated exercises, found ${facile.length}`,
+        message: `Need at least 2 FACILE exercises, found ${facile.length}`,
       });
     }
     if (moyen.length < 2) {
       return res.status(400).json({
         success: false,
-        message: `Need at least 2 MOYEN validated exercises, found ${moyen.length}`,
+        message: `Need at least 2 MOYEN exercises, found ${moyen.length}`,
       });
     }
     if (difficile.length < 1) {
       return res.status(400).json({
         success: false,
-        message: `Need at least 1 DIFFICILE validated exercise, found ${difficile.length}`,
+        message: `Need at least 1 DIFFICILE exercise, found ${difficile.length}`,
       });
     }
 
@@ -859,8 +884,8 @@ module.exports = {
   getMyExercises,
   getExercise,
   getAllExercises,
-  validateExercise,
-  requestRevision,
+  // validateExercise,
+  // requestRevision,
   generateSubjects,
   getGeneratedSubjects,
   validateSubject,
