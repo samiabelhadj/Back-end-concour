@@ -55,19 +55,22 @@ exports.getCandidates = async (req, res) => {
     // candidates in supervisor's assigned rooms
     const rows = await prisma.candidateRoom.findMany({
       where: {
-        room: {
-          roomSupervisor: {
-            some: { supervisor_id: supervisorId }
-          }
-        },
-        session_id: sessionId
-      },
+    session_id: sessionId,
+    examRoom: {
+      roomSupervisor: {
+        some: {
+          supervisor_id: supervisorId,
+          exam_id: session.exam_id   // ← fixes flaw #1
+        }
+      }
+    }
+  },
       select: {
         candidate_id: true,
         place_number: true,
         room_id: true,
 
-        candidate: {
+        candidates: {
           select: {
             candidate_id: true,
             nom: true,
@@ -75,7 +78,7 @@ exports.getCandidates = async (req, res) => {
           }
         },
 
-        room: {
+        examRoom: {
           select: {
             id: true,
             name: true
@@ -100,11 +103,11 @@ exports.getCandidates = async (req, res) => {
       const att = map.get(`${r.candidate_id}-${r.room_id}`);
 
       return {
-        candidate_id: r.candidate.candidate_id,
-        first_name: r.candidate.prenom,
-        last_name: r.candidate.nom,
-        room_id: r.room.id,
-        room_name: r.room.name,
+        candidate_id: r.candidates.candidate_id,
+        first_name: r.candidates.prenom,
+        last_name: r.candidates.nom,
+        room_id: r.examRoom.id,
+        room_name: r.examRoom.name,
         seat_number: r.place_number,
         attendance_status: att
           ? (att.is_present ? 'PRESENT' : 'ABSENT')
