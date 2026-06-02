@@ -29,6 +29,7 @@ app.use('/api/supervisor', supervisorRoutes);
 app.use("/api/rooms", require("./src/routes/room.routes"))
 app.use("/api/exercise",require("./src/routes/exercise.route"))
 app.use('/api/correction', require("./src/routes/correction.routes"));
+app.use('/api/competitions', require("./src/routes/competition.routes"));
 
 app.use(
   "/api/anon",
