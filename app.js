@@ -12,7 +12,7 @@ app.use(cors()); //!change it later
 app.use(express.json());
 app.set('trust proxy',true); 
 const path = require("path");
-app.use("/uploads", express.static(path.join(__dirname, "src/uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 
 //Routes
@@ -29,6 +29,7 @@ app.use('/api/supervisor', supervisorRoutes);
 app.use("/api/rooms", require("./src/routes/room.routes"))
 app.use("/api/exercise",require("./src/routes/exercise.route"))
 app.use('/api/correction', require("./src/routes/correction.routes"));
+app.use('/api/competitions', require("./src/routes/competition.routes"));
 
 app.use(
   "/api/anon",
