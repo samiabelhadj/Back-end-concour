@@ -318,6 +318,101 @@ const getCopyStatus = async (req, res) => {
   }
 };
 
+
+ const getAnonGrades = async (req, res) => {
+  try {
+    const copies = await prisma.anon_grade.findMany({
+      include: {
+        anonymisation: {
+          include: {
+            candidates: {
+              select: {
+                id: true,
+                candidate_id: true,
+                nom: true,
+                prenom: true,
+              },
+            },
+            examSession: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        created_at: "desc",
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: copies.length,
+      data: copies,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching copies",
+    });
+  }
+};
+
+const getAnonGradeByCode = async (req, res) => {
+  try {
+    const { corr_code } = req.params;
+
+    const copy = await prisma.anon_grade.findUnique({
+      where: {
+        corr_code,
+      },
+      include: {
+        anonymisation: {
+          include: {
+            candidates: {
+              select: {
+                id: true,
+                candidate_id: true,
+                nom: true,
+                prenom: true,
+              },
+            },
+            examSession: {
+              select: {
+                id: true,
+                name: true,
+                start_time: true,
+                end_time: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!copy) {
+      return res.status(404).json({
+        success: false,
+        message: "Copy not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: copy,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   assignCorrectorsAuto,
   fillGrade,
@@ -326,5 +421,7 @@ module.exports = {
   getPendingDiscrepancies,
   getCorrectorCopies,
   getCopyStatus,
-  getAllFinalResults
+  getAllFinalResults,
+  getAnonGrades,
+  getAnonGradeByCode
 };

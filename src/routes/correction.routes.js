@@ -10,5 +10,6 @@ router.get('/pending/:competition_id', controller.getPendingDiscrepancies);
 router.get('/copies/:corrector_id',    controller.getCorrectorCopies);
 router.get('/status/:corr_code',       controller.getCopyStatus);
 router.get('/results/:competition_id', controller.getAllFinalResults);
-
+router.get('/copies',controller.getAnonGrades);
+router.get("/copies/search/:corr_code",controller.getAnonGradeByCode);
 module.exports = router;
