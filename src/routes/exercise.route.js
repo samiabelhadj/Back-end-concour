@@ -14,8 +14,8 @@ const {
   getExercise,
   // coordinator actions
   getAllExercises,
-  validateExercise,
-  requestRevision,
+  //* validateExercise,
+  //* requestRevision,
   // subject generation
   generateSubjects,
   getGeneratedSubjects,
@@ -60,13 +60,14 @@ router.get("/:competition_id/exercises",      requireRole("coordinator"),       
 router.get("/:id",                            requireRole(["coordinator", "professor_creator"]), getExercise);
 
 router.patch("/:id",  requireRole("professor_creator"), upload.single("file"), updateExercise);
+
 router.delete("/:id", requireRole("professor_creator"), deleteExercise);
 
 // ─── COORDINATOR ACTIONS ON EXERCISES ────────────────────────────────────────
 // PATCH  /api/exercises/:competition_id/exercises/:id/validate
 // PATCH  /api/exercises/:competition_id/exercises/:id/request-revision
-router.patch("/:competition_id/exercises/:id/validate",         requireRole("coordinator"), validateExercise);
-router.patch("/:competition_id/exercises/:id/request-revision", requireRole("coordinator"), requestRevision);
+   //* router.patch("/:competition_id/exercises/:id/validate",         requireRole("coordinator"),    validateExercise);
+   // *router.patch("/:competition_id/exercises/:id/request-revision", requireRole("coordinator"),    requestRevision);
 
 // ─── SUBJECT GENERATION (coordinator only) ───────────────────────────────────
 // POST   /api/exercises/:competition_id/generate-subjects

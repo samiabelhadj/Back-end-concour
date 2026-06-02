@@ -12,7 +12,7 @@ app.use(cors()); //!change it later
 app.use(express.json());
 app.set('trust proxy',true); 
 const path = require("path");
-app.use("/uploads", express.static(path.join(__dirname, "src/uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 
 //Routes
