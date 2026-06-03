@@ -34,17 +34,16 @@ model anon_grade {
 }
 
 model anonymisation {
-  id                  Int                   @id @default(autoincrement())
-  candidate_id        Int
-  session_id          Int
-  anonym_code         String                @unique @db.VarChar(36)
-  corr_code           String                @unique @db.VarChar(36)
-  created_at          DateTime              @default(now())
-  anon_grade          anon_grade?
-  candidates          candidates            @relation(fields: [candidate_id], references: [id])
-  examSession         examSession           @relation(fields: [session_id], references: [id])
-   //correctorAssignment correctorAssignment[]
-  discrepancyAlert    discrepancyAlert?
+  id               Int               @id @default(autoincrement())
+  candidate_id     Int
+  session_id       Int
+  anonym_code      String            @unique @db.VarChar(36)
+  corr_code        String            @unique @db.VarChar(36)
+  created_at       DateTime          @default(now())
+  anon_grade       anon_grade?
+  candidates       candidates        @relation(fields: [candidate_id], references: [id])
+  examSession      examSession       @relation(fields: [session_id], references: [id])
+  discrepancyAlert discrepancyAlert?
 
   @@index([candidate_id])
   @@index([session_id])
@@ -192,22 +191,6 @@ model competitionRoom {
   @@index([room_id], map: "competitionRoom_room_id_fkey")
 }
 
- // model correctorAssignment {
- // id                                            Int           @id @default(autoincrement())
- // corr_code                                     String
- // corrector_id                                  Int
- // round                                         Int
-  // assigned_at                                   DateTime      @default(now())
- // assigned_by                                   Int?
-  // users_correctorAssignment_assigned_byTousers  users?        @relation("correctorAssignment_assigned_byTousers", fields: [assigned_by], references: [id])
- // anonymisation                                 anonymisation @relation(fields: [corr_code], references: [corr_code])
- // users_correctorAssignment_corrector_idTousers users         @relation("correctorAssignment_corrector_idTousers", fields: [corrector_id], references: [id])
-
- // @@unique([corr_code, round])
- // @@index([assigned_by], map: "correctorAssignment_assigned_by_fkey")
- // @@index([corrector_id])
-//}
-
 model discrepancyAlert {
   id               Int                          @id @default(autoincrement())
   corr_code        String                       @unique
@@ -301,33 +284,19 @@ model exercise {
   difficulty         exercise_difficulty @default(MOYEN)
   description        String?             @db.LongText
   file_path          String?             @db.VarChar(255)
-  status             exercise_status      
+  status             exercise_status
   submitted_at       DateTime?
   created_at         DateTime            @default(now())
-  updated_at         DateTime            @updatedAt
+  updated_at         DateTime             @default(now()) @updatedAt
   competition        competition         @relation(fields: [competition_id], references: [id])
   users              users               @relation(fields: [professor_id], references: [id])
   professorSelection professorSelection? @relation(fields: [selection_id], references: [id])
-   //exerciseComment    exerciseComment?
   subjectExercise    subjectExercise[]
 
   @@index([competition_id])
   @@index([professor_id])
   @@index([selection_id])
 }
-
- // model exerciseComment {
-//   id             Int      @id @default(autoincrement())
-//   exercise_id    Int      @unique
-//   coordinator_id Int
-//   comment        String   @db.Text
-//   created_at     DateTime @default(now())
-//   updated_at     DateTime
-//   users          users    @relation(fields: [coordinator_id], references: [id])
-//   exercise       exercise @relation(fields: [exercise_id], references: [id])
-//
-//   @@index([coordinator_id])
-// }
 
 model generatedSubject {
   id              Int                     @id @default(autoincrement())
@@ -424,30 +393,27 @@ model userRole {
 }
 
 model users {
-  id                                                          Int                   @id @default(autoincrement())
-  first_name                                                  String                @db.VarChar(80)
-  last_name                                                   String                @db.VarChar(80)
-  email                                                       String                @unique(map: "email") @db.VarChar(150)
-  password_hash                                               String                @db.VarChar(255)
-  grade                                                       users_grade?
-  is_active                                                   Boolean               @default(false)
-  created_at                                                  DateTime              @default(dbgenerated("(now())")) @db.DateTime(0)
-  updated_at                                                  DateTime              @default(dbgenerated("(now())")) @db.DateTime(0)
-  faculty                                                     String?               @db.VarChar(150)
-  attendance                                                  attendance[]
-  competition                                                 competition[]
-   // correctorAssignment_correctorAssignment_assigned_byTousers  correctorAssignment[] @relation("correctorAssignment_assigned_byTousers")
-   // correctorAssignment_correctorAssignment_corrector_idTousers correctorAssignment[] @relation("correctorAssignment_corrector_idTousers")
-  discrepancyAlert                                            discrepancyAlert[]
-  exercise                                                    exercise[]
-    // exerciseComment                                             exerciseComment[]
-  generatedSubject                                            generatedSubject[]
-  professorSelection_professorSelection_professor_idTousers   professorSelection[]  @relation("professorSelection_professor_idTousers")
-  professorSelection_professorSelection_selected_byTousers    professorSelection[]  @relation("professorSelection_selected_byTousers")
-  roomSupervisor                                              roomSupervisor[]
-  userModule                                                  userModule[]
-  userRole_userRole_user_idTousers                            userRole[]            @relation("userRole_user_idTousers")
-  userRole_userRole_assigned_byTousers                        userRole[]            @relation("userRole_assigned_byTousers")
+  id                                                        Int                  @id @default(autoincrement())
+  first_name                                                String               @db.VarChar(80)
+  last_name                                                 String               @db.VarChar(80)
+  email                                                     String               @unique(map: "email") @db.VarChar(150)
+  password_hash                                             String               @db.VarChar(255)
+  grade                                                     users_grade?
+  is_active                                                 Boolean              @default(false)
+  created_at                                                DateTime             @default(dbgenerated("(now())")) @db.DateTime(0)
+  updated_at                                                DateTime             @default(dbgenerated("(now())")) @db.DateTime(0)
+  faculty                                                   String?              @db.VarChar(150)
+  attendance                                                attendance[]
+  competition                                               competition[]
+  discrepancyAlert                                          discrepancyAlert[]
+  exercise                                                  exercise[]
+  generatedSubject                                          generatedSubject[]
+  professorSelection_professorSelection_professor_idTousers professorSelection[] @relation("professorSelection_professor_idTousers")
+  professorSelection_professorSelection_selected_byTousers  professorSelection[] @relation("professorSelection_selected_byTousers")
+  roomSupervisor                                            roomSupervisor[]
+  userModule                                                userModule[]
+  userRole_userRole_user_idTousers                          userRole[]           @relation("userRole_user_idTousers")
+  userRole_userRole_assigned_byTousers                      userRole[]           @relation("userRole_assigned_byTousers")
 }
 
 enum userRole_role {
@@ -468,7 +434,44 @@ enum examRoom_status {
   CLOSED
 }
 
+enum generatedSubject_status {
+  DRAFT
+  OFFICIAL
+  REJECTED
+}
 
+enum users_grade {
+  MCB
+  MCA
+  professeur
+  IT_engineer @map("IT engineer")
+}
+
+enum discrepancyAlert_status {
+  PENDING
+  RESOLVED
+}
+
+enum competition_affectation {
+  MANUEL
+  AUTOMATIQUE
+}
+
+enum discrepancyAlert_resolution {
+  MANUAL
+  AUTO
+}
+
+enum exercise_difficulty {
+  FACILE
+  MOYEN
+  DIFFICILE
+}
+
+enum competition_status {
+  ACTIVE
+  FINISHED
+}
 
 enum anon_grade_status {
   PENDING
@@ -479,5 +482,5 @@ enum anon_grade_status {
 }
 
 enum exercise_status {
- SOUMIS
+  SOUMIS
 }

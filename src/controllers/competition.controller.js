@@ -5,12 +5,12 @@ const audit = async ({ userId, action, table, targetId, description, ip }) => {
   try {
     await prisma.auditLog.create({
       data: {
-        user_id:      userId,
+        user_id: userId,
         action,
         target_table: table,
-        target_id:    targetId,
+        target_id: targetId,
         description,
-        ip_address:   ip,
+        ip_address: ip,
       },
     });
   } catch (_) {}
@@ -18,8 +18,6 @@ const audit = async ({ userId, action, table, targetId, description, ip }) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/competitions
-// ROLE : admin
-// Body : { name, academic_year, specialty, target_date, status, exams[] }
 // ─────────────────────────────────────────────────────────────────────────────
 exports.createCompetition = async (req, res) => {
   try {
@@ -28,67 +26,75 @@ exports.createCompetition = async (req, res) => {
       academic_year,
       specialty,
       target_date,
-      status        = "ACTIVE",
+      status = "ACTIVE",
       description,
       max_admitted,
       waiting_list_size,
       discrepancy_threshold,
-      affectation   = "MANUEL",
-      exams         = [],
+      affectation = "MANUEL",
+      exams = [], // ← reçu du body comme "exams"
     } = req.body;
 
     if (!name || !academic_year)
-      return res.status(400).json({ success: false, message: "name et academic_year sont obligatoires" });
+      return res.status(400).json({
+        success: false,
+        message: "name et academic_year sont obligatoires",
+      });
 
     const competition = await prisma.$transaction(async (tx) => {
       const comp = await tx.competition.create({
         data: {
           name,
           academic_year,
-          specialty:             specialty             || null,
-          target_date:           target_date           ? new Date(target_date) : null,
+          specialty: specialty || null,
+          target_date: target_date ? new Date(target_date) : null,
           status,
-          description:           description           || null,
-          max_admitted:          max_admitted          ? parseInt(max_admitted)          : null,
-          waiting_list_size:     waiting_list_size     ? parseInt(waiting_list_size)     : null,
-          discrepancy_threshold: discrepancy_threshold ? parseFloat(discrepancy_threshold): null,
+          description: description || null,
+          max_admitted: max_admitted ? parseInt(max_admitted) : null,
+          waiting_list_size: waiting_list_size ? parseInt(waiting_list_size) : null,
+          discrepancy_threshold: discrepancy_threshold ? parseFloat(discrepancy_threshold) : null,
           affectation,
           created_by: req.user.userId,
         },
       });
 
+      // ✅ FIX 1 : exams (body) → exam (Prisma)
       if (exams.length > 0) {
         await tx.exam.createMany({
           data: exams.map((e) => ({
             competition_id: comp.id,
-            name:           e.name,
-            description:    e.description  || null,
-            coefficient:    e.coefficient  ? parseFloat(e.coefficient) : null,
-            duration:       e.duration     ? parseInt(e.duration)      : null,
+            name: e.name,
+            description: e.description || null,
+            coefficient: e.coefficient ? parseFloat(e.coefficient) : null,
+            duration: e.duration ? parseInt(e.duration) : null,
           })),
         });
       }
 
       return tx.competition.findUnique({
-        where:   { id: comp.id },
+        where: { id: comp.id },
         include: {
-          exams:   true,
-          creator: { select: { id: true, first_name: true, last_name: true } },
-          _count:  { select: { candidates: true } },
+          exam: true, // ✅ FIX 2 : exams → exam
+          users: { select: { id: true, first_name: true, last_name: true } },
+          _count: { select: { candidates: true } },
         },
       });
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "COMPETITION_CREATED",
-      table:       "competition",
-      targetId:    competition.id,
+      userId: req.user.userId,
+      action: "COMPETITION_CREATED",
+      table: "competition",
+      targetId: competition.id,
       description: `Admin#${req.user.userId} a créé le concours "${name}" (${academic_year}) avec ${exams.length} module(s)`,
-      ip:          req.ip,
+      ip: req.ip,
     });
 
-    return res.status(201).json({ success: true, message: "Concours créé avec succès", data: competition });
+    return res.status(201).json({
+      success: true,
+      message: "Concours créé avec succès",
+      data: competition,
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -102,16 +108,15 @@ exports.getAllCompetitions = async (req, res) => {
     const { status, search } = req.query;
     const where = {};
     if (status) where.status = status;
-    if (search) where.name   = { contains: search };
+    if (search) where.name = { contains: search };
 
     const competitions = await prisma.competition.findMany({
       where,
       orderBy: { created_at: "desc" },
       include: {
-        exams:   true,        // ← OK direct
-        creator: { select: { id: true, first_name: true, last_name: true } },
-        _count:  { select: { candidates: true } },
-        // ← SUPPRIMER examSessions: true  ← n'existe pas sur competition
+        exam: true, // ✅ FIX 3 : exams → exam
+        users: { select: { id: true, first_name: true, last_name: true } },
+        _count: { select: { candidates: true } },
       },
     });
 
@@ -127,32 +132,31 @@ exports.getAllCompetitions = async (req, res) => {
 exports.getCompetitionById = async (req, res) => {
   try {
     const competition = await prisma.competition.findUnique({
-      where:   { id: parseInt(req.params.id) },
+      where: { id: parseInt(req.params.id) },
       include: {
-        exams:        { include: { examSessions: true } },
-        creator:      { select: { id: true, first_name: true, last_name: true } },
-        _count:       { select: { candidates: true } },
+        exam: { include: { examSession: true } }, // ✅ examSessions → examSession
+        users: { select: { id: true, first_name: true, last_name: true } },
+        _count: { select: { candidates: true } },
       },
     });
 
     if (!competition)
       return res.status(404).json({ success: false, message: "Concours introuvable" });
 
-    // Calcul stats
-    const totalCoefs   = competition.exams.reduce((s, e) => s + (e.coefficient || 0), 0);
-    const totalMinutes = competition.exams.reduce((s, e) => s + (e.duration    || 0), 0);
-    const hours        = Math.floor(totalMinutes / 60);
-    const minutes      = totalMinutes % 60;
+    const totalCoefs   = competition.exam.reduce((s, e) => s + (e.coefficient || 0), 0);
+    const totalMinutes = competition.exam.reduce((s, e) => s + (e.duration || 0), 0);
+    const hours   = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
 
     return res.json({
       success: true,
       data: {
         ...competition,
         stats: {
-          modules:     competition.exams.length,
-          total_coefs: totalCoefs,
-          duration:    `${hours}h ${minutes > 0 ? minutes + "m" : ""}`.trim(),
-          sessions:    competition.exams.reduce((s, e) => s + e.examSessions.length, 0),
+          modules:      competition.exam.length,
+          total_coefs:  totalCoefs,
+          duration:     `${hours}h ${minutes > 0 ? minutes + "m" : ""}`.trim(),
+          sessions:     competition.exam.reduce((s, e) => s + e.examSession.length, 0),
         },
       },
     });
@@ -163,15 +167,14 @@ exports.getCompetitionById = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUT /api/competitions/:id
-// ROLE : admin
 // ─────────────────────────────────────────────────────────────────────────────
 exports.updateCompetition = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const {
-      name, academic_year, specialty, target_date,
-      status, description, max_admitted,
-      waiting_list_size, discrepancy_threshold, affectation,
+      name, academic_year, specialty, target_date, status,
+      description, max_admitted, waiting_list_size,
+      discrepancy_threshold, affectation,
     } = req.body;
 
     const existing = await prisma.competition.findUnique({ where: { id } });
@@ -187,21 +190,21 @@ exports.updateCompetition = async (req, res) => {
         ...(target_date           !== undefined && { target_date: target_date ? new Date(target_date) : null }),
         ...(status                !== undefined && { status }),
         ...(description           !== undefined && { description }),
-        ...(max_admitted          !== undefined && { max_admitted:          parseInt(max_admitted) }),
-        ...(waiting_list_size     !== undefined && { waiting_list_size:     parseInt(waiting_list_size) }),
+        ...(max_admitted          !== undefined && { max_admitted: parseInt(max_admitted) }),
+        ...(waiting_list_size     !== undefined && { waiting_list_size: parseInt(waiting_list_size) }),
         ...(discrepancy_threshold !== undefined && { discrepancy_threshold: parseFloat(discrepancy_threshold) }),
         ...(affectation           !== undefined && { affectation }),
       },
-      include: { exams: true },
+      include: { exam: true }, // ✅ exams → exam
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "COMPETITION_UPDATED",
-      table:       "competition",
-      targetId:    id,
+      userId: req.user.userId,
+      action: "COMPETITION_UPDATED",
+      table: "competition",
+      targetId: id,
       description: `Admin#${req.user.userId} a modifié le concours#${id} "${existing.name}" → status: ${status || existing.status}`,
-      ip:          req.ip,
+      ip: req.ip,
     });
 
     return res.json({ success: true, message: "Concours mis à jour", data: updated });
@@ -212,14 +215,13 @@ exports.updateCompetition = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DELETE /api/competitions/:id
-// ROLE : admin
 // ─────────────────────────────────────────────────────────────────────────────
 exports.deleteCompetition = async (req, res) => {
   try {
     const id = parseInt(req.params.id);
 
     const existing = await prisma.competition.findUnique({
-      where:   { id },
+      where: { id },
       include: { _count: { select: { candidates: true } } },
     });
     if (!existing)
@@ -232,7 +234,7 @@ exports.deleteCompetition = async (req, res) => {
       });
 
     await prisma.$transaction(async (tx) => {
-      const exams = await tx.exam.findMany({ where: { competition_id: id }, select: { id: true } });
+      const exams   = await tx.exam.findMany({ where: { competition_id: id }, select: { id: true } });
       const examIds = exams.map((e) => e.id);
 
       if (examIds.length > 0) {
@@ -247,12 +249,12 @@ exports.deleteCompetition = async (req, res) => {
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "COMPETITION_DELETED",
-      table:       "competition",
-      targetId:    id,
+      userId: req.user.userId,
+      action: "COMPETITION_DELETED",
+      table: "competition",
+      targetId: id,
       description: `Admin#${req.user.userId} a supprimé le concours#${id} "${existing.name}"`,
-      ip:          req.ip,
+      ip: req.ip,
     });
 
     return res.json({ success: true, message: "Concours supprimé" });
@@ -261,11 +263,10 @@ exports.deleteCompetition = async (req, res) => {
   }
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// EXAM MODULES (matières)
-// ═════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// EXAM MODULES
+// ═══════════════════════════════════════════════════════════════════════════
 
-// POST /api/competitions/:id/exams
 exports.addExam = async (req, res) => {
   try {
     const competition_id = parseInt(req.params.id);
@@ -282,19 +283,19 @@ exports.addExam = async (req, res) => {
       data: {
         competition_id,
         name,
-        description:  description || null,
-        coefficient:  coefficient  ? parseFloat(coefficient)  : null,
-        duration:     duration     ? parseInt(duration)       : null,
+        description: description || null,
+        coefficient: coefficient ? parseFloat(coefficient) : null,
+        duration:    duration    ? parseInt(duration)      : null,
       },
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "EXAM_CREATED",
-      table:       "exam",
-      targetId:    exam.id,
-      description: `Admin#${req.user.userId} a ajouté le module "${name}" (coef: ${coefficient}, durée: ${duration}min) au concours#${competition_id}`,
-      ip:          req.ip,
+      userId: req.user.userId,
+      action: "EXAM_CREATED",
+      table: "exam",
+      targetId: exam.id,
+      description: `Admin#${req.user.userId} a ajouté le module "${name}" au concours#${competition_id}`,
+      ip: req.ip,
     });
 
     return res.status(201).json({ success: true, message: "Module ajouté", data: exam });
@@ -303,7 +304,6 @@ exports.addExam = async (req, res) => {
   }
 };
 
-// PUT /api/competitions/:id/exams/:examId
 exports.updateExam = async (req, res) => {
   try {
     const competition_id = parseInt(req.params.id);
@@ -325,12 +325,12 @@ exports.updateExam = async (req, res) => {
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "EXAM_UPDATED",
-      table:       "exam",
-      targetId:    exam_id,
-      description: `Admin#${req.user.userId} a modifié le module#${exam_id} "${existing.name}" du concours#${competition_id}`,
-      ip:          req.ip,
+      userId: req.user.userId,
+      action: "EXAM_UPDATED",
+      table: "exam",
+      targetId: exam_id,
+      description: `Admin#${req.user.userId} a modifié le module#${exam_id} du concours#${competition_id}`,
+      ip: req.ip,
     });
 
     return res.json({ success: true, message: "Module mis à jour", data: updated });
@@ -339,7 +339,6 @@ exports.updateExam = async (req, res) => {
   }
 };
 
-// DELETE /api/competitions/:id/exams/:examId
 exports.deleteExam = async (req, res) => {
   try {
     const competition_id = parseInt(req.params.id);
@@ -357,12 +356,12 @@ exports.deleteExam = async (req, res) => {
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "EXAM_DELETED",
-      table:       "exam",
-      targetId:    exam_id,
+      userId: req.user.userId,
+      action: "EXAM_DELETED",
+      table: "exam",
+      targetId: exam_id,
       description: `Admin#${req.user.userId} a supprimé le module "${existing.name}" du concours#${competition_id}`,
-      ip:          req.ip,
+      ip: req.ip,
     });
 
     return res.json({ success: true, message: "Module supprimé" });
@@ -371,20 +370,24 @@ exports.deleteExam = async (req, res) => {
   }
 };
 
-// ═════════════════════════════════════════════════════════════════════════════
-// EXAM SESSIONS (planning)
-// ═════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// EXAM SESSIONS
+// ═══════════════════════════════════════════════════════════════════════════
 
-// POST /api/competitions/:id/sessions
 exports.addSession = async (req, res) => {
   try {
     const competition_id = parseInt(req.params.id);
     const { name, exam_id, start_time, end_time } = req.body;
 
     if (!name || !exam_id || !start_time || !end_time)
-      return res.status(400).json({ success: false, message: "name, exam_id, start_time et end_time sont obligatoires" });
+      return res.status(400).json({
+        success: false,
+        message: "name, exam_id, start_time et end_time sont obligatoires",
+      });
 
-    const exam = await prisma.exam.findFirst({ where: { id: parseInt(exam_id), competition_id } });
+    const exam = await prisma.exam.findFirst({
+      where: { id: parseInt(exam_id), competition_id },
+    });
     if (!exam)
       return res.status(404).json({ success: false, message: "Module introuvable pour ce concours" });
 
@@ -396,23 +399,22 @@ exports.addSession = async (req, res) => {
 
     const session = await prisma.examSession.create({
       data: {
-        exam_id:    parseInt(exam_id),
+        exam_id:        parseInt(exam_id),
         name,
-        start_time: start,
-        end_time:   end,
-         competition_id: exam.competition_id,
+        start_time:     start,
+        end_time:       end,
+        competition_id: exam.competition_id,
       },
       include: { exam: true },
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "SESSION_CREATED",
-      table:       "examSession",
-      targetId:    session.id,
-      description: `Admin#${req.user.userId} a planifié la session "${name}" pour le module "${exam.name}" du concours#${competition_id} — ${start.toISOString()} → ${end.toISOString()}`,
-      ip:          req.ip,
-      
+      userId: req.user.userId,
+      action: "SESSION_CREATED",
+      table: "examSession",
+      targetId: session.id,
+      description: `Admin#${req.user.userId} a planifié la session "${name}" pour le module "${exam.name}" du concours#${competition_id}`,
+      ip: req.ip,
     });
 
     return res.status(201).json({ success: true, message: "Session planifiée", data: session });
@@ -421,15 +423,11 @@ exports.addSession = async (req, res) => {
   }
 };
 
-// GET /api/competitions/:id/sessions
 exports.getSessions = async (req, res) => {
   try {
     const competition_id = parseInt(req.params.id);
 
-    const exams = await prisma.exam.findMany({
-      where:   { competition_id },
-      select:  { id: true },
-    });
+    const exams   = await prisma.exam.findMany({ where: { competition_id }, select: { id: true } });
     const examIds = exams.map((e) => e.id);
 
     const sessions = await prisma.examSession.findMany({
@@ -444,7 +442,6 @@ exports.getSessions = async (req, res) => {
   }
 };
 
-// PUT /api/competitions/:id/sessions/:sessionId
 exports.updateSession = async (req, res) => {
   try {
     const session_id     = parseInt(req.params.sessionId);
@@ -462,18 +459,18 @@ exports.updateSession = async (req, res) => {
         ...(exam_id    !== undefined && { exam_id:    parseInt(exam_id) }),
         ...(start_time !== undefined && { start_time: new Date(start_time) }),
         ...(end_time   !== undefined && { end_time:   new Date(end_time) }),
-        competition_id: competition_id, 
+        competition_id,
       },
       include: { exam: true },
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "SESSION_UPDATED",
-      table:       "examSession",
-      targetId:    session_id,
-      description: `Admin#${req.user.userId} a modifié la session#${session_id} "${existing.name}" du concours#${competition_id}`,
-      ip:          req.ip,
+      userId: req.user.userId,
+      action: "SESSION_UPDATED",
+      table: "examSession",
+      targetId: session_id,
+      description: `Admin#${req.user.userId} a modifié la session#${session_id} du concours#${competition_id}`,
+      ip: req.ip,
     });
 
     return res.json({ success: true, message: "Session mise à jour", data: updated });
@@ -482,7 +479,6 @@ exports.updateSession = async (req, res) => {
   }
 };
 
-// DELETE /api/competitions/:id/sessions/:sessionId
 exports.deleteSession = async (req, res) => {
   try {
     const session_id     = parseInt(req.params.sessionId);
@@ -499,16 +495,16 @@ exports.deleteSession = async (req, res) => {
     });
 
     await audit({
-      userId:      req.user.userId,
-      action:      "SESSION_DELETED",
-      table:       "examSession",
-      targetId:    session_id,
+      userId: req.user.userId,
+      action: "SESSION_DELETED",
+      table: "examSession",
+      targetId: session_id,
       description: `Admin#${req.user.userId} a supprimé la session "${existing.name}" du concours#${competition_id}`,
-      ip:          req.ip,
+      ip: req.ip,
     });
 
     return res.json({ success: true, message: "Session supprimée" });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
-}
+};
