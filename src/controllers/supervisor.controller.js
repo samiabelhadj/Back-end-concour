@@ -440,10 +440,10 @@ exports.getRoomInfo = async (req, res) => {
             competition: {
               select: { name: true, academic_year: true }
             },
-            roomSupervisors: {
+            roomSupervisor: {
               where: { supervisor_id: supervisorId },
               include: {
-                room: {
+                examRoom: {
                   select: {
                     id: true,
                     name: true,
@@ -463,12 +463,12 @@ exports.getRoomInfo = async (req, res) => {
       return res.status(404).json({ message: 'Session not found' });
     }
 
-    const assignment = session.exam.roomSupervisors[0];
+    const assignment = session.exam.roomSupervisor[0];
     if (!assignment) {
       return res.status(403).json({ message: 'Not authorized for this session' });
     }
 
-    const room = assignment.room;
+    const room = assignment.examRoom;
 
     const candidateCount = await prisma.candidateRoom.count({
       where: {
