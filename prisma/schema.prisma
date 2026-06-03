@@ -415,6 +415,15 @@ model users {
   userRole_userRole_user_idTousers                          userRole[]           @relation("userRole_user_idTousers")
   userRole_userRole_assigned_byTousers                      userRole[]           @relation("userRole_assigned_byTousers")
 }
+model university {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(200)
+  name_ar    String?  @db.VarChar(200)
+  faculty    String   @db.VarChar(200)
+  wilaya     String?  @db.VarChar(100)
+  logo_url   String?  @db.VarChar(255)
+  created_at DateTime @default(now())
+}
 
 enum userRole_role {
   admin

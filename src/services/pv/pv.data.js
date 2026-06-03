@@ -1,8 +1,9 @@
 const prisma = require('../../config/db');
 
 async function fetchPVData(sessionId, roomId) {
+
   const [session, room, universityRow] = await Promise.all([
-    prisma.examSession.findUnique({
+    prisma.examSession.findUnique({           // ✅ examSession
       where:   { id: sessionId },
       include: {
         exam: {
@@ -10,47 +11,48 @@ async function fetchPVData(sessionId, roomId) {
         }
       }
     }),
-    prisma.examRoom.findUnique({
+    prisma.examRoom.findUnique({              // ✅ examRoom
       where: { id: roomId }
     }),
-    prisma.university.findFirst()
+    prisma.university.findFirst()             // ✅ university
   ]);
 
   if (!session) throw new Error('SESSION_NOT_FOUND');
   if (!room)    throw new Error('ROOM_NOT_FOUND');
 
-  const exams = await prisma.exam.findMany({
+  const exams = await prisma.exam.findMany({  // ✅ exam
     where:   { competition_id: session.exam.competition_id },
     select:  { id: true, name: true },
     orderBy: { id: 'asc' }
   });
 
-  const candidateRooms = await prisma.candidateRoom.findMany({
+  const candidateRooms = await prisma.candidateRoom.findMany({ // ✅ candidateRoom
     where: { room_id: roomId, session_id: sessionId },
     include: {
-      candidate: {
+      candidates: {                            // ✅ candidate (singular relation name)
         select: { nom: true, prenom: true, candidate_id: true }
       }
     },
     orderBy: { place_number: 'asc' }
   });
 
-  const attendance = await prisma.attendance.findMany({
+  const attendance = await prisma.attendance.findMany({ // ✅ attendance
     where:  { session_id: sessionId, room_id: roomId },
     select: { candidate_id: true, is_present: true }
   });
 
-  const supervisorRows = await prisma.roomSupervisor.findMany({
+  const supervisorRows = await prisma.roomSupervisor.findMany({ // ✅ roomSupervisor
     where: { room_id: roomId, exam_id: session.exam_id },
     include: {
-      supervisor: { select: { first_name: true, last_name: true } }
+      users: { select: { first_name: true, last_name: true } }
     }
   });
 
+  // ✅ cr.candidate (singular) — not cr.candidates
   const candidates = candidateRooms.map(cr => ({
-    fullName:   `${cr.candidate.nom} ${cr.candidate.prenom}`,
+    fullName:   `${cr.candidates.nom} ${cr.candidates.prenom}`,
     seatNumber: cr.place_number,
-    cni:        cr.candidate.candidate_id ?? ''
+    cni:        cr.candidates.candidate_id ?? ''
   }));
 
   const present = attendance.filter(a =>  a.is_present).length;
@@ -58,10 +60,9 @@ async function fetchPVData(sessionId, roomId) {
 
   const supervisors = supervisorRows.map(s => ({
     role: 'Surveillant',
-    name: `${s.supervisor.last_name} ${s.supervisor.first_name}`
+    name: `${s.users.last_name} ${s.users.first_name}`
   }));
 
-  // safe university object — never undefined fields reaching the template
   const university = universityRow ? {
     name:     universityRow.name,
     name_ar:  universityRow.name_ar  || 'المدرسة العليا للإعلام الآلي',
