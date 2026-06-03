@@ -131,7 +131,7 @@ async function runAnonymisation(examSessionId, userId, ipAddress) {
           session_id: examSessionId,
           anonym_code,
           corr_code,
-          grade: { create: {} },   // pre-create the anon_grade row
+          anon_grade: { create: {} },   // pre-create the anon_grade row
         },
       });
     })
