@@ -22,6 +22,7 @@ const prisma         = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const QRCode         = require('qrcode');
 const { audit }      = require('../utils/audit.utils');
+const { encrypt }      = require('../utils/crypto.utils');
 
 /* ─────────────────────────────────────────────────────────────────
    1. GET ALL CLOSED SESSIONS
@@ -91,64 +92,125 @@ async function getClosedSessions() {
    ───────────────────────────────────────────────────────────────── */
 async function runAnonymisation(examSessionId, userId, ipAddress) {
 
-  /* ── guard: session must exist ── */
-  const session = await prisma.examSession.findUnique({
-    where: { id: examSessionId },
-  });
-  if (!session) throw new Error('Session not found');
+ const session = await prisma.examSession.findUnique({
+   where:   { id: examSessionId },
+   include: { exam: true }
+ });
+ if (!session) throw new Error('Session not found');
 
-  /* ── guard: must not have been anonymised already ── */
-  const existing = await prisma.anonymisation.findFirst({
-    where: { session_id: examSessionId },
-  });
-  if (existing) throw new Error('This session has already been anonymised');
+ if (new Date(session.end_time) > new Date()) {
+   throw new Error('Session has not ended yet');
+ }
 
-  /* ── guard: session must have ended ── */
-  if (session.end_time > new Date()) {
-    throw new Error('Session has not ended yet');
-  }
+ const existing = await prisma.anonymisation.findFirst({
+   where: { session_id: examSessionId }
+ });
+ if (existing) throw new Error('This session has already been anonymised');
 
-  /* ── fetch present candidates ── */
-  const present = await prisma.attendance.findMany({
-    where:  { session_id: examSessionId, is_present: true },
-    select: { candidate_id: true },
-  });
-  if (present.length === 0) {
-    throw new Error('No present candidates found for this session');
-  }
+ const present = await prisma.attendance.findMany({
+   where:   { session_id: examSessionId, is_present: true },
+   include: {
+     candidates: {
+       select: {
+         id:           true,
+         nom:          true,
+         prenom:       true,
+         email:        true,
+         telephone:    true,
+         candidate_id: true
+       }
+     }
+   }
+ });
 
-  /* ── atomic bulk creation ── */
-  const results = await prisma.$transaction(
-    present.map(({ candidate_id }) => {
-      /* Code2 — printed on the physical sticker, scanned by corrector */
-      const anonym_code = `DOCT-${uuidv4().slice(0, 8).toUpperCase()}`;
-      /* Code3 — lives only in the DB; corrector never sees it directly */
-      const corr_code   = `CORR-${uuidv4().slice(0, 8).toUpperCase()}`;
+ if (present.length === 0)
+   throw new Error('No present candidates found for this session');
 
-      return prisma.anonymisation.create({
-        data: {
-          candidate_id,
-          session_id: examSessionId,
-          anonym_code,
-          corr_code,
-          anon_grade: { create: {} },   // pre-create the anon_grade row
-        },
-      });
-    })
-  );
+ // build flat array of ALL operations for the transaction
+ const operations = [];
 
-  /* ── audit: record who triggered anonymisation, when, from where ── */
-  await audit({
-    userId,
-    action:      'ANONYMISATION_TRIGGERED',
-    targetTable: 'anonymisation',
-    targetId:    examSessionId,
-    description: `${results.length} candidates anonymised for session "${session.name}" (id: ${examSessionId})`,
-    ipAddress,
-  });
+ for (const { candidates } of present) {
+   const anonym_code = `DOCT-${uuidv4().slice(0, 8).toUpperCase()}`;
+   const corr_code   = `CORR-${uuidv4().slice(0, 8).toUpperCase()}`;
 
-  return { count: results.length };
+   // Operation A — create anonymisation row + blank grade row
+   operations.push(
+     prisma.anonymisation.create({
+       data: {
+         candidate_id: candidates.id,
+         session_id:   examSessionId,
+         anonym_code,
+         corr_code,
+         anon_grade: { create: {} }
+       }
+     })
+   );
+
+   // Operation B — write encrypted identity to candidate_identity
+   // upsert: if identity already exists (re-run scenario), update it
+   // if it does not exist, create it fresh
+   // the candidates table is never touched
+   operations.push(
+     prisma.candidate_identity.upsert({
+       where:  { candidate_id: candidates.id },
+       update: {
+         // overwrite if somehow it already exists
+         nom_enc:       encrypt(candidates.nom),
+         prenom_enc:    encrypt(candidates.prenom),
+         email_enc:     encrypt(candidates.email),
+         telephone_enc: encrypt(candidates.telephone),
+         cin_enc:       encrypt(candidates.candidate_id),
+         encrypted_at:  new Date()
+       },
+       create: {
+         candidate_id:  candidates.id,
+         nom_enc:       encrypt(candidates.nom),
+         prenom_enc:    encrypt(candidates.prenom),
+         email_enc:     encrypt(candidates.email),
+         telephone_enc: encrypt(candidates.telephone),
+         cin_enc:       encrypt(candidates .candidate_id),
+       }
+     })
+   );
+ }
+//  // Operation C — null out plaintext fields in candidates
+//  // this runs INSIDE the same transaction so if anything fails,
+//  // the nulling also rolls back — you never end up with nulled
+//  // fields but no encrypted copy
+//  operations.push(
+//    prisma.candidates.update({
+//      where: { id: candidate.id },
+//      data: {
+//        nom:       null,
+//        prenom:    null,
+//        email:     null,
+//        telephone: null,
+//        // do NOT null candidate_id — it is used as the CIN reference
+//        // do NOT null nom_ar, prenom_ar — up to you, null them if you want
+//      }
+//    })
+//  );
+
+
+ // single atomic transaction — all or nothing
+ await prisma.$transaction(operations);
+
+ // audit log AFTER successful transaction
+ await audit({
+   userId,
+   action:      'ANONYMISATION_TRIGGERED',
+   targetTable: 'anonymisation',
+   targetId:    examSessionId,
+   description: `Anonymised ${present.length} candidates for session ${session.name}`,
+   ipAddress,
+ });
+
+ // return only count — never return codes
+ return { count: present.length };
 }
+
+
+
 
 /* ─────────────────────────────────────────────────────────────────
    3. GET STICKERS FOR SESSION
