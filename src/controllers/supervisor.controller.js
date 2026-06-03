@@ -150,7 +150,7 @@ const verifySupervisorAccess = async ({ supervisorId, candidateId, sessionId }) 
     where: {
       candidate_id: candidateId,
       session_id:   sessionId,
-      room: {
+      examRoom: {
         roomSupervisor: {
           some: { supervisor_id: supervisorId }
         }
@@ -263,7 +263,7 @@ exports.markAllPresent = async (req, res) => {
     const rows = await prisma.candidateRoom.findMany({
       where: {
         session_id,
-        room: {
+        examRoom: {
           roomSupervisor: {
             some: { supervisor_id: supervisorId }
           }
@@ -279,56 +279,52 @@ exports.markAllPresent = async (req, res) => {
       return res.status(404).json({ message: 'No candidates found for your rooms in this session' });
     }
 
-    await prisma.$transaction(async (tx) => {
-
-      // upsert attendance for every candidate at once
-      await Promise.all(rows.map(r =>
-        tx.attendance.upsert({
-          where: {
-            candidate_id_session_id: {
-              candidate_id: r.candidate_id,
-              session_id
-            }
-          },
-          update: {
-            is_present:    true,
-            supervisor_id: supervisorId,
-            room_id:       r.room_id,
-            recorded_at:   new Date()
-          },
-          create: {
-            candidate_id:  r.candidate_id,
-            session_id,
-            supervisor_id: supervisorId,
-            room_id:       r.room_id,
-            is_present:    true
-          }
-        })
-      ));
-
-      // restore any previously excluded candidates back to INSCRIT
-      // (in case supervisor is correcting a mistake)
-      await tx.candidates.updateMany({
-        where: {
-          id:     { in: rows.map(r => r.candidate_id) },
-          statut: 'EXCLU'
-        },
-        data: { statut: 'INSCRIT' }
-      });
-
-      // single audit log entry for the bulk action
-      await tx.auditLog.create({
-        data: {
-          user_id:      supervisorId,
-          action:       'MARK_ALL_PRESENT',
-          target_table: 'attendance',
-          target_id:    session_id,
-          description:  `Marked all ${rows.length} candidates present for session ${session_id}`,
-          ip_address:   req.ip,
-          logged_at:    new Date()
+  await prisma.$transaction(async (tx) => {
+  // Sequential upserts — avoids flooding the connection pool
+  for (const r of rows) {
+    await tx.attendance.upsert({
+      where: {
+        candidate_id_session_id: {
+          candidate_id: r.candidate_id,
+          session_id
         }
-      });
+      },
+      update: {
+        is_present:    true,
+        supervisor_id: supervisorId,
+        room_id:       r.room_id,
+        recorded_at:   new Date()
+      },
+      create: {
+        candidate_id:  r.candidate_id,
+        session_id,
+        supervisor_id: supervisorId,
+        room_id:       r.room_id,
+        is_present:    true
+      }
     });
+  }
+
+  await tx.candidates.updateMany({
+    where: {
+      id:     { in: rows.map(r => r.candidate_id) },
+      statut: 'EXCLU'
+    },
+    data: { statut: 'INSCRIT' }
+  });
+
+  await tx.auditLog.create({
+    data: {
+      user_id:      supervisorId,
+      action:       'MARK_ALL_PRESENT',
+      target_table: 'attendance',
+      target_id:    session_id,
+      description:  `Marked all ${rows.length} candidates present for session ${session_id}`,
+      ip_address:   req.ip,
+      logged_at:    new Date()
+    }
+  });
+}, { timeout: 30000 }); // Fix 2: raise the timeout as a safety net
 
     return res.json({
       message: 'All candidates marked present',
@@ -353,7 +349,7 @@ exports.getAttendanceSummary = async (req, res) => {
     const candidates = await prisma.candidateRoom.findMany({
       where: {
         session_id: sessionId,
-        room: {
+        examRoom: {
           roomSupervisor: {
             some: { supervisor_id: supervisorId }
           }

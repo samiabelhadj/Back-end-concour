@@ -30,7 +30,7 @@ router.get(
   ctrl.getClosedSessions
 );
 
-/* POST /api/anonymise/:sessionId
+/* POST /api/anon/:sessionId
    Trigger bulk anonymisation for one session.
    Returns 201 { message, count } on success.
    Returns 409 if already anonymised (safe to show to operator).  */
@@ -40,7 +40,7 @@ router.post(
   ctrl.triggerAnonymisation
 );
 
-/* GET  /api/anonymise/:sessionId/stickers
+/* GET  /api/anon/:sessionId/stickers
    Return Code2 + QR data URI per candidate.
    Code3 never appears in this response.                          */
 router.get(
