@@ -196,7 +196,7 @@ async function getStickersForSession(examSessionId, userId, ipAddress) {
 
       return {
         candidate_id: r.candidates.candidate_id,
-        anonym_code:  r.anonym_code,
+        // anonym_code:  r.anonym_code,
         qr_code,                    // base64 PNG data URI — safe for <img src="">
         /* corr_code intentionally omitted — corrector must not see it here */
       };
